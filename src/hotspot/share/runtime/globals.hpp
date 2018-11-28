@@ -391,6 +391,15 @@ const size_t minimumSymbolTableSize = 1024;
   notproduct(bool, WalkStackALot, false,                                    \
           "Trace stack (no print) at every exit from the runtime system")   \
                                                                             \
+  develop(int, DeoptimizeObjectsALot, 0,                                    \
+          "Revert optimizations based on escape analysis at a frequency "   \
+          "given with DeoptimizeObjectsALotInterval=n. "                    \
+          "0: switched off. "                                               \
+          "1: At every nth exit from the runtime system "                   \
+          "2: Starts a dedicated thread that periodically triggers the "    \
+          "deoptimization n ms. " )                                         \
+           range(0,2)                                                       \
+                                                                            \
   product(bool, Debugging, false,                                           \
           "Set when executing debug methods in debug.cpp "                  \
           "(to prevent triggering assertions)")                             \
@@ -1535,6 +1544,9 @@ const size_t minimumSymbolTableSize = 1024;
                                                                             \
   notproduct(intx, ZombieALotInterval,     5,                               \
           "Number of exits until ZombieALot kicks in")                      \
+                                                                            \
+  develop(intx, DeoptimizeObjectsALotInterval,     5,                       \
+          "Interval for DeoptimizeObjectsALot.")                            \
                                                                             \
   diagnostic(uintx, MallocMaxTestWords,     0,                              \
           "If non-zero, maximum number of words that malloc/realloc can "   \

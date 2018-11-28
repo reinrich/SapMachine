@@ -1644,7 +1644,7 @@ void JavaThread::initialize() {
   set_vm_result_2(NULL);
   set_vframe_array_head(NULL);
   set_vframe_array_last(NULL);
-  set_deferred_locals(NULL);
+  reset_deferred_updates();
   set_deopt_mark(NULL);
   set_deopt_compiled_method(NULL);
   set_monitor_chunks(NULL);
@@ -1883,7 +1883,7 @@ JavaThread::~JavaThread() {
       // individual jvmtiDeferredLocalVariableSet are CHeapObj's
       delete dlv;
     } while (deferred->length() != 0);
-    delete deferred;
+    delete deferred_updates();
   }
 
   // All Java related clean up happens in exit
@@ -2377,6 +2377,11 @@ void JavaThread::handle_special_runtime_exit_condition(bool check_asyncs) {
     check_and_handle_async_exceptions();
   }
 
+  if (is_ea_obj_deopt_suspend()) {
+    frame_anchor()->make_walkable(this);
+    wait_for_object_deoptimization();
+  }
+
   JFR_ONLY(SUSPEND_THREAD_CONDITIONAL(this);)
 }
 
@@ -2571,6 +2576,33 @@ void JavaThread::java_suspend_self_with_safepoint_check() {
   }
 }
 
+void JavaThread::wait_for_object_deoptimization() {
+  assert(!has_last_Java_frame() || frame_anchor()->walkable(), "should have walkable stack");
+  assert(this == Thread::current(), "invariant");
+  JavaThreadState state = thread_state();
+
+  do {
+    set_thread_state(_thread_blocked);
+    set_suspend_equivalent();
+    MonitorLocker ml(EscapeBarrier_lock, Monitor::_no_safepoint_check_flag);
+    if (is_ea_obj_deopt_suspend()) {
+      ml.wait();
+    }
+    if (handle_special_suspend_equivalent_condition()) {
+      MutexUnlocker mu(EscapeBarrier_lock, Monitor::_no_safepoint_check_flag);
+      java_suspend_self();
+    }
+    set_thread_state_fence(state);
+  } while (is_ea_obj_deopt_suspend());
+
+  // Since we are not using a regular thread-state transition helper here,
+  // we must manually emit the instruction barrier after leaving a safe state.
+  OrderAccess::cross_modify_fence();
+  if (state != _thread_in_native) {
+    SafepointMechanism::block_if_requested(this);
+  }
+}
+
 #ifdef ASSERT
 // Verify the JavaThread has not yet been published in the Threads::list, and
 // hence doesn't need protection from concurrent access at this stage.
@@ -2598,6 +2630,10 @@ void JavaThread::check_safepoint_and_suspend_for_native_trans(JavaThread *thread
     thread->java_suspend_self_with_safepoint_check();
   } else {
     SafepointMechanism::block_if_requested(thread);
+  }
+
+  if (thread->is_ea_obj_deopt_suspend()) {
+    thread->wait_for_object_deoptimization();
   }
 
   JFR_ONLY(SUSPEND_THREAD_CONDITIONAL(thread);)
@@ -3514,6 +3550,15 @@ void CodeCacheSweeperThread::nmethods_do(CodeBlobClosure* cf) {
   }
 }
 
+#if defined(ASSERT) && COMPILER2_OR_JVMCI
+static void deopt_objs_alot_thread_entry(JavaThread* thread, TRAPS) {
+  Deoptimization::deoptimize_objects_alot_loop();
+}
+
+DeoptimizeObjectsALotThread::DeoptimizeObjectsALotThread()
+: JavaThread(&deopt_objs_alot_thread_entry) {
+}
+#endif // defined(ASSERT) && COMPILER2_OR_JVMCI
 
 // ======= Threads ========
 

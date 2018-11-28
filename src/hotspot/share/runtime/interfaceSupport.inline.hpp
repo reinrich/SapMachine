@@ -62,6 +62,7 @@ class InterfaceSupport: AllStatic {
 
   static void zombieAll();
   static void deoptimizeAll();
+  static void deoptimizeAllObjects();
   static void verify_stack();
   static void verify_last_frame();
 # endif

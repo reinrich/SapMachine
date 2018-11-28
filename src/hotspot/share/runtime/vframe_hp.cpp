@@ -117,8 +117,8 @@ void compiledVFrame::update_deferred_value(BasicType type, int index, jvalue val
   } else {
     // No deferred updates pending for this thread.
     // allocate in C heap
-    deferred =  new(ResourceObj::C_HEAP, mtCompiler) GrowableArray<jvmtiDeferredLocalVariableSet*> (1, true);
-    thread()->set_deferred_locals(deferred);
+    thread()->allocate_deferred_updates();
+    deferred = thread()->deferred_locals();
   }
   if (locals == NULL) {
     locals = new jvmtiDeferredLocalVariableSet(method(), bci(), fr().id(), vframe_id());
@@ -309,6 +309,26 @@ bool compiledVFrame::should_reexecute() const {
   return scope()->should_reexecute();
 }
 
+bool compiledVFrame::not_global_escape_in_scope() const {
+  if (scope() == NULL) {
+    // native nmethod, all objs escape
+    nmethod* nm = code()->as_nmethod();
+    assert(nm->is_native_method(), "must be native");
+    return false;
+  }
+  return (scope()->objects() != NULL) || scope()->not_global_escape_in_scope();
+}
+
+bool compiledVFrame::arg_escape() const {
+  if (scope() == NULL) {
+    // native nmethod, all objs escape
+    nmethod* nm = code()->as_nmethod();
+    assert(nm->is_native_method(), "must be native");
+    return false;
+  }
+  return scope()->arg_escape();
+}
+
 vframe* compiledVFrame::sender() const {
   const frame f = fr();
   if (scope() == NULL) {
@@ -330,6 +350,7 @@ jvmtiDeferredLocalVariableSet::jvmtiDeferredLocalVariableSet(Method* method, int
   _vframe_id = vframe_id;
   // Alway will need at least one, must be on C heap
   _locals = new(ResourceObj::C_HEAP, mtCompiler) GrowableArray<jvmtiDeferredLocalVariable*> (1, true);
+  _objects_are_deoptimized = false;
 }
 
 jvmtiDeferredLocalVariableSet::~jvmtiDeferredLocalVariableSet() {
@@ -424,7 +445,7 @@ void jvmtiDeferredLocalVariableSet::update_monitors(GrowableArray<MonitorInfo*>*
     if (val->index() >= method()->max_locals() + method()->max_stack()) {
       int lock_index = val->index() - (method()->max_locals() + method()->max_stack());
       MonitorInfo* info = monitors->at(lock_index);
-      MonitorInfo* new_info = new MonitorInfo((oopDesc*)val->value().l, info->lock(), info->eliminated(), info->owner_is_scalar_replaced());
+      MonitorInfo* new_info = new MonitorInfo((oopDesc*)val->value().l, info->lock(), info->eliminated(), false);
       monitors->at_put(lock_index, new_info);
     }
   }

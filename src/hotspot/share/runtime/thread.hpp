@@ -292,7 +292,8 @@ class Thread: public ThreadShadow {
     _has_async_exception    = 0x00000001U, // there is a pending async exception
     _critical_native_unlock = 0x00000002U, // Must call back to unlock JNI critical lock
 
-    _trace_flag             = 0x00000004U  // call tracing backend
+    _trace_flag             = 0x00000004U, // call tracing backend
+    _ea_obj_deopt           = 0x00000008U  // suspend for object reallocation and relocking for JVMTI agent
   };
 
   // various suspension related flags - atomically updated
@@ -543,6 +544,9 @@ class Thread: public ThreadShadow {
   inline void set_trace_flag();
   inline void clear_trace_flag();
 
+  inline void set_ea_obj_deopt_flag();
+  inline void clear_ea_obj_deopt_flag();
+
   // Support for Unhandled Oop detection
   // Add the field for both, fastdebug and debug, builds to keep
   // Thread's fields layout the same.
@@ -616,6 +620,8 @@ class Thread: public ThreadShadow {
   JFR_ONLY(DEFINE_THREAD_LOCAL_ACCESSOR_JFR;)
 
   bool is_trace_suspend()               { return (_suspend_flags & _trace_flag) != 0; }
+
+  bool is_ea_obj_deopt_suspend()        { return (_suspend_flags & _ea_obj_deopt) != 0; }
 
   // VM operation support
   int vm_operation_ticket()                      { return ++_vm_operation_started_count; }
@@ -983,6 +989,34 @@ class CompilerThread;
 
 typedef void (*ThreadFunction)(JavaThread*, TRAPS);
 
+// Holds updates for compiled frames by JVMTI agents that cannot be performed immediately.
+class JvmtiDeferredUpdates : public CHeapObj<mtCompiler> {
+
+  // Relocking has to be deferred, if the lock owning thread is currently waiting on the monitor.
+  int _relock_count_after_wait;
+
+  // Deferred updates of locals, expressions and monitors
+  GrowableArray<jvmtiDeferredLocalVariableSet*> _deferred_locals_updates;
+
+ public:
+  JvmtiDeferredUpdates() :
+    _relock_count_after_wait(0),
+    _deferred_locals_updates((ResourceObj::set_allocation_type((address) &_deferred_locals_updates,
+                              ResourceObj::C_HEAP), 1), true, mtCompiler) { }
+
+  GrowableArray<jvmtiDeferredLocalVariableSet*>* deferred_locals() { return &_deferred_locals_updates; }
+
+  int get_and_reset_relock_count_after_wait() {
+    int result = _relock_count_after_wait;
+    _relock_count_after_wait = 0;
+    return result;
+  }
+  void inc_relock_count_after_wait() {
+    _relock_count_after_wait++;
+  }
+};
+
+
 class JavaThread: public Thread {
   friend class VMStructs;
   friend class JVMCIVMStructs;
@@ -1025,11 +1059,10 @@ class JavaThread: public Thread {
   CompiledMethod*       _deopt_nmethod;         // CompiledMethod that is currently being deoptimized
   vframeArray*  _vframe_array_head;              // Holds the heap of the active vframeArrays
   vframeArray*  _vframe_array_last;              // Holds last vFrameArray we popped
-  // Because deoptimization is lazy we must save jvmti requests to set locals
-  // in compiled frames until we deoptimize and we have an interpreter frame.
-  // This holds the pointer to array (yeah like there might be more than one) of
-  // description of compiled vframes that have locals that need to be updated.
-  GrowableArray<jvmtiDeferredLocalVariableSet*>* _deferred_locals_updates;
+  // Holds updates by JVMTI agents for compiled frames that cannot be performed immediately. They
+  // will be carried out as soon as possible, which, in most cases, is just before deoptimization of
+  // the frame, when control returns to it.
+  JvmtiDeferredUpdates* _jvmti_deferred_updates;
 
   // Handshake value for fixing 6243940. We need a place for the i2c
   // adapter to store the callee Method*. This value is NEVER live
@@ -1338,6 +1371,10 @@ class JavaThread: public Thread {
   inline void set_ext_suspended();
   inline void clear_ext_suspended();
 
+  // Synchronize with another thread (most likely a JVMTI agent) that is deoptimizing objects of the
+  // current thread, i.e. reverts optimizations based on escape analysis.
+  void wait_for_object_deoptimization();
+
  public:
   void java_suspend(); // higher-level suspension logic called by the public APIs
   void java_resume();  // higher-level resume logic called by the public APIs
@@ -1402,7 +1439,7 @@ class JavaThread: public Thread {
   // Whenever a thread transitions from native to vm/java it must suspend
   // if external|deopt suspend is present.
   bool is_suspend_after_native() const {
-    return (_suspend_flags & (_external_suspend JFR_ONLY(| _trace_flag))) != 0;
+    return (_suspend_flags & (_external_suspend | _ea_obj_deopt JFR_ONLY(| _trace_flag))) != 0;
   }
 
   // external suspend request is completed
@@ -1475,7 +1512,7 @@ class JavaThread: public Thread {
     // we have checked is_external_suspend(), we will recheck its value
     // under SR_lock in java_suspend_self().
     return (_special_runtime_exit_condition != _no_async_condition) ||
-            is_external_suspend() || is_trace_suspend();
+            is_external_suspend() || is_trace_suspend() || is_ea_obj_deopt_suspend();
   }
 
   void set_pending_unsafe_access_error()          { _special_runtime_exit_condition = _async_unsafe_access_error; }
@@ -1492,8 +1529,24 @@ class JavaThread: public Thread {
   vframeArray* vframe_array_head() const         { return _vframe_array_head;  }
 
   // Side structure for deferring update of java frame locals until deopt occurs
-  GrowableArray<jvmtiDeferredLocalVariableSet*>* deferred_locals() const { return _deferred_locals_updates; }
-  void set_deferred_locals(GrowableArray<jvmtiDeferredLocalVariableSet *>* vf) { _deferred_locals_updates = vf; }
+  JvmtiDeferredUpdates* deferred_updates() const { return _jvmti_deferred_updates; }
+  void reset_deferred_updates()                  { _jvmti_deferred_updates = NULL; }
+  void allocate_deferred_updates() {
+    assert(_jvmti_deferred_updates == NULL, "already allocated");
+    _jvmti_deferred_updates = new JvmtiDeferredUpdates();
+  }
+  GrowableArray<jvmtiDeferredLocalVariableSet*>* deferred_locals() const { return _jvmti_deferred_updates == NULL ? NULL : _jvmti_deferred_updates->deferred_locals(); }
+
+  // Relocking has to be deferred, if the lock owning thread is currently waiting on the monitor.
+  int get_and_reset_relock_count_after_wait() {
+    return deferred_updates() == NULL ? 0 : deferred_updates()->get_and_reset_relock_count_after_wait();
+  }
+  void inc_relock_count_after_wait() {
+    if (deferred_updates() == NULL) {
+      allocate_deferred_updates();
+    }
+    deferred_updates()->inc_relock_count_after_wait();
+  }
 
   // These only really exist to make debugging deopt problems simpler
 
@@ -2104,6 +2157,14 @@ class CodeCacheSweeperThread : public JavaThread {
   void oops_do(OopClosure* f, CodeBlobClosure* cf);
   void nmethods_do(CodeBlobClosure* cf);
 };
+
+#if defined(ASSERT) && COMPILER2_OR_JVMCI
+// See Deoptimization::deoptimize_objects_alot_loop()
+class DeoptimizeObjectsALotThread : public JavaThread {
+ public:
+  DeoptimizeObjectsALotThread();
+};
+#endif // defined(ASSERT) && COMPILER2_OR_JVMCI
 
 // A thread used for Compilation.
 class CompilerThread : public JavaThread {

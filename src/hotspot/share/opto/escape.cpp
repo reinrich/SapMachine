@@ -123,6 +123,7 @@ bool ConnectionGraph::compute_escape() {
   GrowableArray<JavaObjectNode*> java_objects_worklist;
   GrowableArray<JavaObjectNode*> non_escaped_worklist;
   GrowableArray<FieldNode*>      oop_fields_worklist;
+  GrowableArray<SafePointNode*>  sfn_worklist;
   DEBUG_ONLY( GrowableArray<Node*> addp_worklist; )
 
   { Compile::TracePhase tp("connectionGraph", &Phase::timers[Phase::_t_connectionGraph]);
@@ -187,6 +188,9 @@ bool ConnectionGraph::compute_escape() {
     for (DUIterator_Fast imax, i = n->fast_outs(imax); i < imax; i++) {
       Node* m = n->fast_out(i);   // Get user
       ideal_nodes.push(m);
+    }
+    if (n-> is_SafePoint()) {
+      sfn_worklist.append(n->as_SafePoint());
     }
   }
   if (non_escaped_worklist.length() == 0) {
@@ -317,6 +321,69 @@ bool ConnectionGraph::compute_escape() {
     tty->cr();
 #endif
   }
+
+  // Annotate at safepoints if they have <= ArgEscape objects in their scope and at
+  // java calls if they pass ArgEscape objects as parameters.
+  if (has_non_escaping_obj &&
+      (C->env()->should_retain_local_variables() ||
+       C->env()->jvmti_can_get_owned_monitor_info() ||
+       C->env()->jvmti_can_walk_any_space() ||
+       DeoptimizeObjectsALot)) {
+    int sfn_length = sfn_worklist.length();
+    for (int next = 0; next < sfn_length; next++) {
+      SafePointNode* sfn = sfn_worklist.at(next);
+      bool found_not_global_escape = false;
+      for (JVMState* jvms = sfn->jvms(); jvms && !found_not_global_escape; jvms = jvms->caller()) {
+        if (C->env()->should_retain_local_variables() || C->env()->jvmti_can_walk_any_space() ||
+            DeoptimizeObjectsALot) {
+          // Jvmti agents can access locals. Must provide info about local objects at runtime.
+          int num_locs = jvms->loc_size();
+          for(int idx = 0; idx < num_locs && !found_not_global_escape; idx++ ) {
+            Node* l = sfn->local(jvms, idx);
+            found_not_global_escape = not_global_escape(l);
+          }
+        }
+        if (C->env()->jvmti_can_get_owned_monitor_info() ||
+            C->env()->jvmti_can_walk_any_space() || DeoptimizeObjectsALot) {
+          // Jvmti agents can read monitors. Must provide info about locked objects at runtime.
+          int num_mon = jvms->nof_monitors();
+          for(int idx = 0; idx < num_mon && !found_not_global_escape; idx++ ) {
+            Node* m = sfn->monitor_obj(jvms, idx);
+            found_not_global_escape = m != NULL && not_global_escape(m);
+          }
+        }
+      }
+      sfn->set_not_global_escape_in_scope(found_not_global_escape);
+
+      if (sfn->is_CallJava()) {
+        CallJavaNode* call = sfn->as_CallJava();
+        bool found_arg_escape_in_args = false;
+        if (call->method() != NULL) {
+          uint max_idx = TypeFunc::Parms + call->method()->arg_size();
+          for(uint idx = TypeFunc::Parms; idx < max_idx && !found_arg_escape_in_args; idx++) {
+            Node* p = call->in(idx);
+            found_arg_escape_in_args = not_global_escape(p);
+          }
+        } else {
+          const char* name = call->as_CallStaticJava()->_name;
+          assert(name != NULL, "no name");
+          // no arg escapes through uncommon traps
+          if (strcmp(name, "uncommon_trap") != 0) {
+            // process_call_arguments() assumes that all arguments escape globally
+            const TypeTuple* d = call->tf()->domain();
+            for (uint i = TypeFunc::Parms; i < d->cnt() && !found_arg_escape_in_args; i++) {
+              const Type* at = d->field_at(i);
+              if (at->isa_oopptr() != NULL) {
+                found_arg_escape_in_args = true;
+              }
+            }
+          }
+        }
+        call->set_arg_escape(found_arg_escape_in_args);
+      }
+    }
+  }
+
   return has_non_escaping_obj;
 }
 

@@ -65,6 +65,7 @@
 #include "prims/jvmtiExport.hpp"
 #include "prims/jvmtiThreadState.hpp"
 #include "runtime/atomic.hpp"
+#include "runtime/deoptimization.hpp"
 #include "runtime/fieldDescriptor.inline.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
@@ -4060,6 +4061,10 @@ static jint attach_current_thread(JavaVM *vm, void **penv, void *_args, bool dae
     // avoid this thread trying to do a GC before it is added to the thread-list
     thread->set_active_handles(JNIHandleBlock::allocate_block());
     Threads::add(thread, daemon);
+    // Avoid pushing frames with ea based optimizations while deoptimization is in progress
+    while (EscapeBarrier::deoptimizing_objects_for_all_threads()) {
+      Threads_lock->wait();
+    }
   }
   // Create thread group and name info from attach arguments
   oop group = NULL;
