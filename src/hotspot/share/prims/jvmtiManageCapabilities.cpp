@@ -367,6 +367,8 @@ void JvmtiManageCapabilities::update() {
   JvmtiExport::set_can_pop_frame(avail.can_pop_frame);
   JvmtiExport::set_can_force_early_return(avail.can_force_early_return);
   JvmtiExport::set_should_clean_up_heap_objects(avail.can_generate_breakpoint_events);
+  JvmtiExport::set_can_get_owned_monitor_info(avail.can_get_owned_monitor_info ||
+                                              avail.can_get_owned_monitor_stack_depth_info);
 }
 
 #ifndef PRODUCT

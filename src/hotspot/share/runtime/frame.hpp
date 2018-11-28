@@ -337,8 +337,8 @@ class frame {
   // Safepoints
 
  public:
-  oop saved_oop_result(RegisterMap* map) const;
-  void set_saved_oop_result(RegisterMap* map, oop obj);
+  oop saved_oop_result(const RegisterMap* map) const;
+  void set_saved_oop_result(const RegisterMap* map, oop obj);
 
   // For debugging
  private:

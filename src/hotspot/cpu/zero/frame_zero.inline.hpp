@@ -141,11 +141,11 @@ inline JavaCallWrapper** frame::entry_frame_call_wrapper_addr() const {
   return zero_entryframe()->call_wrapper();
 }
 
-inline void frame::set_saved_oop_result(RegisterMap* map, oop obj) {
+inline void frame::set_saved_oop_result(const RegisterMap* map, oop obj) {
   ShouldNotCallThis();
 }
 
-inline oop frame::saved_oop_result(RegisterMap* map) const {
+inline oop frame::saved_oop_result(const RegisterMap* map) const {
   ShouldNotCallThis();
   return NULL;
 }

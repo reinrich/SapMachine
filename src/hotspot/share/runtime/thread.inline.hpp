@@ -65,6 +65,12 @@ inline void Thread::set_trace_flag() {
 inline void Thread::clear_trace_flag() {
   clear_suspend_flag(_trace_flag);
 }
+inline void Thread::set_ea_obj_deopt_flag() {
+  set_suspend_flag(_ea_obj_deopt);
+}
+inline void Thread::clear_ea_obj_deopt_flag() {
+  clear_suspend_flag(_ea_obj_deopt);
+}
 
 inline jlong Thread::cooked_allocated_bytes() {
   jlong allocated_bytes = OrderAccess::load_acquire(&_allocated_bytes);

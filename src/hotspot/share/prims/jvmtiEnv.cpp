@@ -1193,6 +1193,11 @@ JvmtiEnv::GetOwnedMonitorInfo(JavaThread* java_thread, jint* owned_monitor_count
   GrowableArray<jvmtiMonitorStackDepthInfo*> *owned_monitors_list =
       new (ResourceObj::C_HEAP, mtInternal) GrowableArray<jvmtiMonitorStackDepthInfo*>(1, true);
 
+  JVMTIEscapeBarrier eb(calling_thread, java_thread, true);
+  if (!eb.deoptimize_objects(MaxJavaStackTraceDepth)) {
+    return JVMTI_ERROR_OUT_OF_MEMORY;
+  }
+
   // It is only safe to perform the direct operation on the current
   // thread. All other usage needs to use a vm-safepoint-op for safety.
   if (java_thread == calling_thread) {
@@ -1238,6 +1243,11 @@ JvmtiEnv::GetOwnedMonitorStackDepthInfo(JavaThread* java_thread, jint* monitor_i
   // growable array of jvmti monitors info on the C-heap
   GrowableArray<jvmtiMonitorStackDepthInfo*> *owned_monitors_list =
          new (ResourceObj::C_HEAP, mtInternal) GrowableArray<jvmtiMonitorStackDepthInfo*>(1, true);
+
+  JVMTIEscapeBarrier eb(calling_thread, java_thread, true);
+  if (!eb.deoptimize_objects(MaxJavaStackTraceDepth)) {
+    return JVMTI_ERROR_OUT_OF_MEMORY;
+  }
 
   // It is only safe to perform the direct operation on the current
   // thread. All other usage needs to use a vm-safepoint-op for safety.
@@ -1332,6 +1342,11 @@ JvmtiEnv::RunAgentThread(jthread thread, jvmtiStartFunction proc, const void* ar
   Handle thread_hndl(current_thread, thread_oop);
   {
     MutexLocker mu(Threads_lock); // grab Threads_lock
+
+    while (JVMTIEscapeBarrier::deoptimizing_objects_for_all_threads()) {
+      // Must not add new threads that push frames with ea based optimizations
+      Threads_lock->wait(0, Monitor::_as_suspend_equivalent_flag);
+    }
 
     JvmtiAgentThread *new_thread = new JvmtiAgentThread(this, proc, arg);
 
@@ -1638,6 +1653,13 @@ JvmtiEnv::PopFrame(JavaThread* java_thread) {
     }
   }
 
+  if (java_thread->frames_to_pop_failed_realloc() > 0) {
+    // VM is in the process of popping the top frame, because it has scalar replaced objects which
+    // could not be reallocated on the heap.
+    // Return JVMTI_ERROR_OUT_OF_MEMORY to avoid interfering with the VM.
+    return JVMTI_ERROR_OUT_OF_MEMORY;
+  }
+
   {
     ResourceMark rm(current_thread);
     // Check if there are more than one Java frame in this thread, that the top two frames
@@ -1669,9 +1691,15 @@ JvmtiEnv::PopFrame(JavaThread* java_thread) {
     }
 
     // If any of the top 2 frames is a compiled one, need to deoptimize it
+    JVMTIEscapeBarrier eb(current_thread, java_thread, !is_interpreted[0] || !is_interpreted[1]);
     for (int i = 0; i < 2; i++) {
       if (!is_interpreted[i]) {
         Deoptimization::deoptimize_frame(java_thread, frame_sp[i]);
+        // eagerly reallocate scalar replaced objects
+        if (!eb.deoptimize_objects(frame_sp[i])) {
+          // reallocation of scalar replaced objects failed -> return with error
+          return JVMTI_ERROR_OUT_OF_MEMORY;
+        }
       }
     }
 

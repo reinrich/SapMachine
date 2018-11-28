@@ -75,6 +75,7 @@ class StackValue : public ResourceObj {
 
   void set_obj(Handle value) {
     assert(type() == T_OBJECT, "type check");
+    _integer_value = 0;
     _handle_value = value;
   }
 

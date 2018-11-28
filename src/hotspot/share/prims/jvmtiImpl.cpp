@@ -517,6 +517,7 @@ VM_GetOrSetLocal::VM_GetOrSetLocal(JavaThread* thread, jint depth, jint index, B
   , _type(type)
   , _jvf(NULL)
   , _set(false)
+  , _eb(NULL, NULL, false) // no references escape
   , _result(JVMTI_ERROR_NONE)
 {
 }
@@ -531,6 +532,7 @@ VM_GetOrSetLocal::VM_GetOrSetLocal(JavaThread* thread, jint depth, jint index, B
   , _value(value)
   , _jvf(NULL)
   , _set(true)
+  , _eb(JavaThread::current(), thread, type == T_OBJECT)
   , _result(JVMTI_ERROR_NONE)
 {
 }
@@ -544,6 +546,7 @@ VM_GetOrSetLocal::VM_GetOrSetLocal(JavaThread* thread, JavaThread* calling_threa
   , _type(T_OBJECT)
   , _jvf(NULL)
   , _set(false)
+  , _eb(calling_thread, thread, true)
   , _result(JVMTI_ERROR_NONE)
 {
 }
@@ -718,6 +721,50 @@ static bool can_be_deoptimized(vframe* vf) {
   return (vf->is_compiled_frame() && vf->fr().can_be_deoptimized());
 }
 
+// Revert optimizations based on escape analysis if this is an access to a local object
+bool VM_GetOrSetLocal::deoptimize_objects(javaVFrame* jvf) {
+#if COMPILER2_OR_JVMCI
+  if (NOT_JVMCI(DoEscapeAnalysis &&) _type == T_OBJECT) {
+    if (_depth < _thread->frames_to_pop_failed_realloc()) {
+      // cannot access frame with failed reallocations
+      _result = JVMTI_ERROR_OUT_OF_MEMORY;
+      return false;
+    }
+    if (can_be_deoptimized(jvf)) {
+      compiledVFrame* cf = compiledVFrame::cast(jvf);
+      if (cf->not_global_escape_in_scope() && !_eb.deoptimize_objects(cf)) {
+        // reallocation of scalar replaced objects failed, because heap is exhausted
+        _result = JVMTI_ERROR_OUT_OF_MEMORY;
+        return false;
+      }
+    }
+
+    // With this access the object could escape the thread changing its escape state from ArgEscape,
+    // to GlobalEscape so we must deoptimize callers which could have optimized on the escape state.
+    vframe* vf = jvf;
+    do {
+      // move to next physical frame
+      while(!vf->is_top()) {
+        vf = vf->sender();
+      }
+      vf = vf->sender();
+
+      if (vf != NULL && vf->is_compiled_frame()) {
+        compiledVFrame* cvf = compiledVFrame::cast(vf);
+        // Deoptimize objects if arg escape is being passed down the stack.
+        // Note that deoptimizing the frame is not enough, because objects need to be relocked
+        if (cvf->arg_escape() && !_eb.deoptimize_objects(cvf)) {
+          // reallocation of scalar replaced objects failed, because heap is exhausted
+          _result = JVMTI_ERROR_OUT_OF_MEMORY;
+          return false;
+        }
+      }
+    } while(vf != NULL && !vf->is_entry_frame());
+  }
+#endif // COMPILER2_OR_JVMCI
+  return true;
+}
+
 bool VM_GetOrSetLocal::doit_prologue() {
   _jvf = get_java_vframe();
   NULL_CHECK(_jvf, false);
@@ -735,9 +782,14 @@ bool VM_GetOrSetLocal::doit_prologue() {
   if (!check_slot_type_no_lvt(_jvf)) {
     return false;
   }
-  if (method_oop->has_localvariable_table()) {
-    return check_slot_type_lvt(_jvf);
+  if (method_oop->has_localvariable_table() && !check_slot_type_lvt(_jvf)) {
+    return false;
   }
+
+  if (!deoptimize_objects(_jvf)) {
+    return false;
+  }
+
   return true;
 }
 

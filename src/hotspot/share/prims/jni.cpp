@@ -66,6 +66,7 @@
 #include "prims/jvmtiThreadState.hpp"
 #include "runtime/atomic.hpp"
 #include "runtime/compilationPolicy.hpp"
+#include "runtime/deoptimization.hpp"
 #include "runtime/fieldDescriptor.inline.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
@@ -4138,6 +4139,11 @@ static jint attach_current_thread(JavaVM *vm, void **penv, void *_args, bool dae
   // This thread will not do a safepoint check, since it has
   // not been added to the Thread list yet.
   { MutexLocker ml(Threads_lock);
+    // Must not add new threads that push frames with ea based optimizations
+    while (JVMTIEscapeBarrier::deoptimizing_objects_for_all_threads()) {
+      Threads_lock->wait(Monitor::_no_safepoint_check_flag);
+    }
+
     // This must be inside this lock in order to get FullGCALot to work properly, i.e., to
     // avoid this thread trying to do a GC before it is added to the thread-list
     thread->set_active_handles(JNIHandleBlock::allocate_block());

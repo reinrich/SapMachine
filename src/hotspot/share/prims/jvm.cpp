@@ -2758,6 +2758,11 @@ JVM_ENTRY(void, JVM_StartThread(JNIEnv* env, jobject jthread))
     // we operate.
     MutexLocker mu(Threads_lock);
 
+    while (JVMTIEscapeBarrier::deoptimizing_objects_for_all_threads()) {
+      // Must not add new threads that push frames with ea based optimizations
+      Threads_lock->wait(0, Monitor::_as_suspend_equivalent_flag);
+    }
+
     // Since JDK 5 the java.lang.Thread threadStatus is used to prevent
     // re-starting an already started thread, so we should usually find
     // that the JavaThread is null. However for a JNI attached thread
