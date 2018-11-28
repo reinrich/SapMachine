@@ -379,7 +379,10 @@ public:
                        AbstractCompiler*         compiler,
                        bool                      has_unsafe_access,
                        bool                      has_wide_vectors,
-                       RTMState                  rtm_state = NoRTM);
+                       RTMState                  rtm_state = NoRTM,
+                       bool optimized_because_of_no_escapes = false,
+                       bool eliminated_sync_on_arg_escapes = false,
+                       bool eliminated_sync_on_non_escapes = false);
 
 
   // Access to certain well known ciObjects.

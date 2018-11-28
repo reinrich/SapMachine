@@ -2166,6 +2166,22 @@ bool PointsToNode::non_escaping_allocation() {
   return true;
 }
 
+// Return true if we know the node does not escape the compiled frame.
+bool ConnectionGraph::is_non_escape(Node *n) {
+  assert(!_collecting, "should not call during graph construction");
+  // If the node was created after the escape computation we can't answer.
+  uint idx = n->_idx;
+  if (idx >= nodes_size()) {
+    return false;
+  }
+  PointsToNode* ptn = ptnode_adr(idx);
+  PointsToNode::EscapeState es = ptn->escape_state();
+  // If we have already computed a value, return it.
+  if (es >= PointsToNode::ArgEscape)
+    return false;
+  return ptn->non_escaping_allocation();
+}
+
 // Return true if we know the node does not escape globally.
 bool ConnectionGraph::not_global_escape(Node *n) {
   assert(!_collecting, "should not call during graph construction");
@@ -3238,6 +3254,10 @@ void ConnectionGraph::split_unique_types(GrowableArray<Node *>  &alloc_worklist,
   //            actually updated until phase 4.)
   if (memnode_worklist.length() == 0)
     return;  // nothing to do
+  // Record the information that the graph was optimized based on information that non escaping
+  // allocations exist; optimized code must not be executed after escape state was changed by JVMTI
+  // agents, i.e. activations have to be deoptimized in that case.
+  _compile->set_optimized_because_of_no_escapes(true);
   while (memnode_worklist.length() != 0) {
     Node *n = memnode_worklist.pop();
     if (visited.test_set(n->_idx))

@@ -370,6 +370,9 @@ class VM_GetOrSetLocal : public VM_Operation {
   javaVFrame* get_java_vframe();
   bool check_slot_type_lvt(javaVFrame* vf);
   bool check_slot_type_no_lvt(javaVFrame* vf);
+#if COMPILER2_OR_JVMCI
+  bool deoptimize_objects(javaVFrame* vf);
+#endif
 
 public:
   // Constructor for non-object getter
@@ -387,6 +390,11 @@ public:
   jvmtiError result()    { return _result; }
 
   bool doit_prologue();
+  // Deoptimize callers which optimized based on the escape state of the accessed object.
+  // Return false to indicate failure.
+#if COMPILER2_OR_JVMCI
+  bool deoptimize_callers_with_ea_optimizations();
+#endif
   void doit();
   bool allow_nested_vm_operations() const;
   const char* name() const                       { return "get/set locals"; }

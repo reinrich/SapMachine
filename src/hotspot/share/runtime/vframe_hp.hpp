@@ -129,6 +129,8 @@ private:
 
   // Does the vframe match this jvmtiDeferredLocalVariableSet
   bool                              matches(const vframe* vf);
+  // Does the underlying physical frame match this jvmtiDeferredLocalVariableSet
+  bool                              matches(const frame* f) { return id() == f->id(); }
   // GC
   void                              oops_do(OopClosure* f);
 

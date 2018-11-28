@@ -119,6 +119,15 @@ class nmethod : public CompiledMethod {
   // used by jvmti to track if an unload event has been posted for this nmethod.
   bool _unload_reported;
 
+  // Info about optimizations that require action if objects escape to jvmti agents.
+  unsigned int _optimized_because_of_no_escapes:1;// Uses of non escaping allocations are optimized,
+                                                  // e.g. field loads are eliminated even if the
+                                                  // allocation is not scalar replaced
+  unsigned int _eliminated_sync_on_arg_escapes:1; // eliminated thread synchronization (locking,
+                                                  // membars) on ArgEscape objects
+  unsigned int _eliminated_sync_on_non_escapes:1; // eliminated thread synchronization (locking,
+                                                  // membars) on NoEscape objects
+
   // Protected by Patching_lock
   volatile signed char _state;               // {not_installed, in_use, not_entrant, zombie, unloaded}
 
@@ -200,7 +209,10 @@ class nmethod : public CompiledMethod {
           ExceptionHandlerTable* handler_table,
           ImplicitExceptionTable* nul_chk_table,
           AbstractCompiler* compiler,
-          int comp_level
+          int comp_level,
+          bool optimized_because_of_no_escapes,
+          bool eliminated_sync_on_arg_escapes,
+          bool eliminated_sync_on_non_escapes
 #if INCLUDE_JVMCI
           , char* speculations,
           int speculations_len,
@@ -245,7 +257,10 @@ class nmethod : public CompiledMethod {
                               ExceptionHandlerTable* handler_table,
                               ImplicitExceptionTable* nul_chk_table,
                               AbstractCompiler* compiler,
-                              int comp_level
+                              int comp_level,
+                              bool optimized_because_of_no_escapes,
+                              bool eliminated_sync_on_arg_escapes,
+                              bool eliminated_sync_on_non_escapes
 #if INCLUDE_JVMCI
                               , char* speculations = NULL,
                               int speculations_len = 0,
@@ -409,6 +424,20 @@ class nmethod : public CompiledMethod {
 
   void copy_values(GrowableArray<jobject>* oops);
   void copy_values(GrowableArray<Metadata*>* metadata);
+
+  // Info about optimizations that require action if objects escape to jvmti agents.
+  // Uses of non escaping allocations are optimized, e.g. field loads are eliminated even if the
+  // allocation is not scalar replaced.
+  bool  optimized_because_of_no_escapes() const     { return _optimized_because_of_no_escapes; }
+  void  set_optimized_because_of_no_escapes(bool z) { _optimized_because_of_no_escapes = z; }
+  // Eliminated_sync_on_arg_escapes() evaluates to true, iff the compiler eliminated thread
+  // synchronization (locking, membars) on ArgEscape objects (see escape.hpp)
+  bool  eliminated_sync_on_arg_escapes() const     { return _eliminated_sync_on_arg_escapes; }
+  void  set_eliminated_sync_on_arg_escapes(bool z) { _eliminated_sync_on_arg_escapes = z; }
+  // Eliminated_sync_on_arg_escapes() evaluates to true, iff the compiler eliminated thread
+  // synchronization (locking, membars) on NoEscape objects (see escape.hpp)
+  bool  eliminated_sync_on_non_escapes() const     { return _eliminated_sync_on_non_escapes; }
+  void  set_eliminated_sync_on_non_escapes(bool z) { _eliminated_sync_on_non_escapes = z; }
 
   // Relocation support
 private:

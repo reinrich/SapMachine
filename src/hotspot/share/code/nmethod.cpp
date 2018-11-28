@@ -436,6 +436,9 @@ void nmethod::init_defaults() {
   _oops_do_mark_link       = NULL;
   _jmethod_id              = NULL;
   _osr_link                = NULL;
+  _optimized_because_of_no_escapes = 0;
+  _eliminated_sync_on_arg_escapes  = 0;
+  _eliminated_sync_on_non_escapes  = 0;
 #if INCLUDE_RTM_OPT
   _rtm_state               = NoRTM;
 #endif
@@ -489,7 +492,10 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
   ExceptionHandlerTable* handler_table,
   ImplicitExceptionTable* nul_chk_table,
   AbstractCompiler* compiler,
-  int comp_level
+  int comp_level,
+  bool optimized_because_of_no_escapes,
+  bool eliminated_sync_on_arg_escapes,
+  bool eliminated_sync_on_non_escapes
 #if INCLUDE_JVMCI
   , char* speculations,
   int speculations_len,
@@ -526,7 +532,10 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
             handler_table,
             nul_chk_table,
             compiler,
-            comp_level
+            comp_level,
+            optimized_because_of_no_escapes,
+            eliminated_sync_on_arg_escapes,
+            eliminated_sync_on_non_escapes
 #if INCLUDE_JVMCI
             , speculations,
             speculations_len,
@@ -696,7 +705,10 @@ nmethod::nmethod(
   ExceptionHandlerTable* handler_table,
   ImplicitExceptionTable* nul_chk_table,
   AbstractCompiler* compiler,
-  int comp_level
+  int comp_level,
+  bool optimized_because_of_no_escapes,
+  bool eliminated_sync_on_arg_escapes,
+  bool eliminated_sync_on_non_escapes
 #if INCLUDE_JVMCI
   , char* speculations,
   int speculations_len,
@@ -820,6 +832,10 @@ nmethod::nmethod(
     assert(compiler->is_c2() || compiler->is_jvmci() ||
            _method->is_static() == (entry_point() == _verified_entry_point),
            " entry points must be same for static methods and vice versa");
+
+    set_optimized_because_of_no_escapes(optimized_because_of_no_escapes);
+    set_eliminated_sync_on_arg_escapes(eliminated_sync_on_arg_escapes);
+    set_eliminated_sync_on_non_escapes(eliminated_sync_on_non_escapes);
   }
 }
 

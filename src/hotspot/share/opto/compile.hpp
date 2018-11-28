@@ -435,6 +435,11 @@ class Compile : public Phase {
   IdealGraphPrinter*    _printer;
 #endif
 
+  // Info about optimizations that require action if objects escape to jvmti agents
+  bool _optimized_because_of_no_escapes;// changed ideal sub-graph that uses non escaping allocations; e.g. field
+                                        // loads are eliminated even if the allocation is not scalar replaced
+  bool _eliminated_sync_on_arg_escapes; // eliminated thread sync. (locking, membars) on ArgEscape objects
+  bool _eliminated_sync_on_non_escapes; // eliminated thread sync. (locking, membars) on NoEscape objects
 
   // Node management
   uint                  _unique;                // Counter for unique Node indices
@@ -778,6 +783,19 @@ class Compile : public Phase {
     }
 #endif
   }
+
+  // Changed ideal sub-graph that uses non escaping allocations; e.g. field
+  // loads are eliminated even if the allocation is not scalar replaced
+  bool optimized_because_of_no_escapes()           { return _optimized_because_of_no_escapes;}
+  void set_optimized_because_of_no_escapes(bool z) {_optimized_because_of_no_escapes = z;}
+  // Eliminated_sync_on_arg_escapes() evaluates to true, iff the compiler eliminated thread
+  // synchronization (locking, membars) on ArgEscape objects (see escape.hpp)
+  bool eliminated_sync_on_arg_escapes()           { return _eliminated_sync_on_arg_escapes;}
+  void set_eliminated_sync_on_arg_escapes(bool z) {_eliminated_sync_on_arg_escapes = z;}
+  // Eliminated_sync_on_arg_escapes() evaluates to true, iff the compiler eliminated thread
+  // synchronization (locking, membars) on NoEscape objects (see escape.hpp)
+  bool eliminated_sync_on_non_escapes()           { return _eliminated_sync_on_non_escapes;}
+  void set_eliminated_sync_on_non_escapes(bool z) {_eliminated_sync_on_non_escapes = z;}
 
   int           macro_count()             const { return _macro_nodes->length(); }
   int           predicate_count()         const { return _predicate_opaqs->length();}

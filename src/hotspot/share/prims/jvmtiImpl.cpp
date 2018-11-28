@@ -735,6 +735,46 @@ static bool can_be_deoptimized(vframe* vf) {
   return (vf->is_compiled_frame() && vf->fr().can_be_deoptimized());
 }
 
+#if COMPILER2_OR_JVMCI
+bool VM_GetOrSetLocal::deoptimize_objects(javaVFrame* vf) {
+  if (DoEscapeAnalysis && _type == T_OBJECT) {
+      if (can_be_deoptimized(vf)) {
+        // must deoptimize objects because this access potentially changes the escape state
+        compiledVFrame* cf = compiledVFrame::cast(vf);
+        if (!Deoptimization::deoptimize_objects(compiledVFrame::cast(vf))) {
+          // reallocation of scalar replaced objects failed, because heap is exhausted
+          _result = JVMTI_ERROR_OUT_OF_MEMORY;
+          return false;
+        }
+        nmethod* nm = vf->nm()->as_nmethod();
+        if ((nm->optimized_because_of_no_escapes() || nm->eliminated_sync_on_arg_escapes()
+            || nm->eliminated_sync_on_non_escapes()) && !vf->fr().is_deoptimized_frame()) {
+          // must deoptimize the frame, even if no objects where deoptimized, because
+          // there could be eliminated locking on the escaped local in the continuation
+          // of the compiled method
+          if (TraceDeoptimization) {
+            ResourceMark rm;
+            ttyLocker ttyl;
+            tty->print_cr("requesting deoptimization for thread " INTPTR_FORMAT " ", (intptr_t)_thread);
+            vf->fr().print_on(tty);
+          }
+          Deoptimization::deoptimize_frame(_thread, vf->fr().id());
+        }
+      } else if (_depth < _thread->frames_to_pop_failed_realloc()) {
+        // cannot access frame with failed reallocations
+        _result = JVMTI_ERROR_OUT_OF_MEMORY;
+        return false;
+      }
+
+      // SAPJVM RR 2015-03-23: deoptimize callers which optimized based on the escape state of the accessed object o1
+      if (EliminateLocks && !deoptimize_callers_with_ea_optimizations()) {
+        return false;
+      }
+    }
+  return true;
+}
+#endif // COMPILER2_OR_JVMCI
+
 bool VM_GetOrSetLocal::doit_prologue() {
   _jvf = get_java_vframe();
   NULL_CHECK(_jvf, false);
@@ -749,13 +789,64 @@ bool VM_GetOrSetLocal::doit_prologue() {
     }
   }
 
-  if (method_oop->has_localvariable_table()) {
-    return check_slot_type_lvt(_jvf);
-  } else {
-    return check_slot_type_no_lvt(_jvf);
+  bool slot_type_ok = method_oop->has_localvariable_table() ?
+      check_slot_type_lvt(_jvf) :
+      check_slot_type_no_lvt(_jvf);
+
+  if (!slot_type_ok) {
+    return false;
   }
+
+  if (!deoptimize_objects(_jvf)) {
+    return false;
+  }
+
   return true;
 }
+
+#if COMPILER2_OR_JVMCI
+// Let o1 be the object that escapes _thread by this access. We deoptimize
+// frames of compiled methods which potentially omit synchronization on o1,
+// assuming it does not escape. o1 must be relocked, if locking has already been
+// omitted.  Note that eliminated nested locks are not considered here. Because
+// this optimization does not depend on escape state.
+bool VM_GetOrSetLocal::deoptimize_callers_with_ea_optimizations() {
+  // if _set == true, then no object escapes, but it could be a shared object
+  // that is brought into a context that assumes a NoEscape object, so we must
+  // search and deoptimize frames in that case, too
+  // example: debugger modifies local which is returned to caller, and the caller
+  // assumes the returned value is ArgEscape, because it was passed as argument
+
+  frame phf  = _jvf->fr();
+  vframe* vf = _jvf;
+  // the depth of byte code escape analysis estimation is limited, there can't
+  // be any optimizations on o1 depending on its escape state below this limit
+  int frames_to_check = MaxBCEAEstimateLevel+1;
+  do {
+    // skip vframes until we reach either the next physical frame,
+    // the stack bottom or the deepest frame from which o1 could have escaped
+    do {
+      if ((vf = vf->sender()) == NULL || frames_to_check-- <= 0)
+        return true; // no need to search any further
+    } while (vf->fr().id() == phf.id());
+
+    // see if this physical frame is compiled and needs to be deoptimized
+    phf = vf->fr();
+    if (phf.is_compiled_frame() && ((nmethod*) phf.cb())->eliminated_sync_on_arg_escapes()) {
+      // deoptimize objects to have them relocked
+      if (!Deoptimization::deoptimize_objects(&phf, vf->register_map(), _thread)) {
+        // reallocation failed because of exhaused java heap
+        _result = JVMTI_ERROR_OUT_OF_MEMORY;
+        return false;
+      }
+      // must deoptimize the frame, even if no objects where deoptimized, because
+      // there could be eliminated locking on the escaped local in the continuation
+      // of the compiled method
+      Deoptimization::deoptimize_frame(_thread, phf.id());
+    }
+  }  while(true);
+}
+#endif // COMPILER2_OR_JVMCI
 
 void VM_GetOrSetLocal::doit() {
   InterpreterOopMap oop_mask;
