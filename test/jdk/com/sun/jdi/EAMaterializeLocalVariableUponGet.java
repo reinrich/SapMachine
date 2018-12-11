@@ -33,8 +33,8 @@
  * @run main jdk.test.lib.FileInstaller compilerDirectives.json compilerDirectives.json
  * @run driver ClassFileInstaller sun.hotspot.WhiteBox
  *                                sun.hotspot.WhiteBox$WhiteBoxPermission
- * @run compile -g MaterializeLocalVariableUponGet.java
- * @run driver MaterializeLocalVariableUponGet
+ * @run compile -g EAMaterializeLocalVariableUponGet.java
+ * @run driver EAMaterializeLocalVariableUponGet
  *                 -Xbootclasspath/a:.
  *                 -XX:+UnlockDiagnosticVMOptions
  *                 -XX:+WhiteBoxAPI
@@ -60,22 +60,21 @@ import jdk.test.lib.Asserts;
 
 // Manual execution:
 // export CLS_PATH="-cp /priv/d038402/git/reinrich/SapMachine/eclipse_java_projs/test.jdk/bin:/priv/d038402/git/reinrich/SapMachine/eclipse_java_projs/test.lib/bin"
-// ./images/jdk/bin/java -Dtest.jdk=/priv/d038402/builds/SapMachine_lu0486_64_slowdebug/images/jdk $CLS_PATH MaterializeLocalVariableUponGet $CLS_PATH -XX:+TraceDeoptimization -XX:+PrintCompilation -XX:+PrintInlining -XX:-TieredCompilation -Xbatch -XX:-PrintOptoAssembly -XX:CompilerDirectivesFile=compilerDirectives.json -XX:CICompilerCount=1
+// ./images/jdk/bin/java -Dtest.jdk=/priv/d038402/builds/SapMachine_lu0486_64_slowdebug/images/jdk $CLS_PATH EAMaterializeLocalVariableUponGet $CLS_PATH -XX:+TraceDeoptimization -XX:+PrintCompilation -XX:+PrintInlining -XX:-TieredCompilation -Xbatch -XX:-PrintOptoAssembly -XX:CompilerDirectivesFile=compilerDirectives.json -XX:CICompilerCount=1
 
 // TODO: remove trace options like '-XX:+PrintCompilation -XX:+PrintInlining' to avoid deadlock as in https://bugs.openjdk.java.net/browse/JDK-8213902
 
 /********** target program **********/
 
-class MaterializeLocalVariableUponGetTarget {
+class EAMaterializeLocalVariableUponGetTarget {
     private static final WhiteBox WB = WhiteBox.getWhiteBox();
 
-    private static final String namee = MaterializeLocalVariableUponGetTarget.class.getName();
     private static final int COMPILE_THRESHOLD = 20000;
 
     private static final String TESTMETHOD_NAME = "dontinline_testMethod";
 
     public static void main(String[] args) {
-        new MaterializeLocalVariableUponGetTarget().run();
+        new EAMaterializeLocalVariableUponGetTarget().run();
     }
 
     public void run() {
@@ -133,16 +132,16 @@ class MaterializeLocalVariableUponGetTarget {
 
  /********** test program **********/
 
-public class MaterializeLocalVariableUponGet extends TestScaffold {
+public class EAMaterializeLocalVariableUponGet extends TestScaffold {
     ReferenceType targetClass;
     ThreadReference mainThread;
 
-    MaterializeLocalVariableUponGet (String args[]) {
+    EAMaterializeLocalVariableUponGet (String args[]) {
         super(args);
     }
 
     public static void main(String[] args) throws Exception {
-        new MaterializeLocalVariableUponGet (args).startTests();
+        new EAMaterializeLocalVariableUponGet (args).startTests();
     }
 
     /********** test core **********/
@@ -151,7 +150,7 @@ public class MaterializeLocalVariableUponGet extends TestScaffold {
         /*
          * Get to the top of main() to determine targetClass and mainThread
          */
-        String targetProgName = MaterializeLocalVariableUponGetTarget.class.getName();
+        String targetProgName = EAMaterializeLocalVariableUponGetTarget.class.getName();
         String testName = getClass().getSimpleName();
         BreakpointEvent bpe = startToMain(targetProgName);
         targetClass = bpe.location().declaringType();
