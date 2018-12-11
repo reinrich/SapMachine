@@ -49,11 +49,8 @@
 
 import java.util.List;
 
-import compiler.testlibrary.CompilerUtils;
-
 import com.sun.jdi.*;
 import com.sun.jdi.event.*;
-import sun.hotspot.WhiteBox;
 
 import jdk.test.lib.Asserts;
 
@@ -66,67 +63,16 @@ import jdk.test.lib.Asserts;
 
 /********** target program **********/
 
-class EAMaterializeLocalVariableUponGetTarget {
-    private static final WhiteBox WB = WhiteBox.getWhiteBox();
-
-    private static final int COMPILE_THRESHOLD = 20000;
-
-    private static final String TESTMETHOD_NAME = "dontinline_testMethod";
+class EAMaterializeLocalVariableUponGetTarget extends EADebuggerTargetBase {
 
     public static void main(String[] args) {
         new EAMaterializeLocalVariableUponGetTarget().run();
-    }
-
-    public void run() {
-        msg(getName() + " is up and running.");
-        compileTestMethod();
-        warmupDone();
-        checkCompLevel();
-        dontinline_testMethod();
-        msg(getName() + " is exiting.");
-    }
-
-    public void dontinline_brkpt() {
-        // will set breakpoint here
     }
 
     public int dontinline_testMethod() {
         PointXY xy = new PointXY(4, 2);
         dontinline_brkpt();
         return xy.x + xy.y;
-    }
-
-    public String getName() {
-        return getClass().getName();
-    }
-
-    private void warmupDone() {
-        msg(getName() + " warmup done.");
-    }
-
-    public void compileTestMethod() {
-        int callCount = COMPILE_THRESHOLD + 1000;
-        while (callCount-- > 0) {
-            dontinline_testMethod();
-        }
-    }
-
-    public void checkCompLevel() {
-        java.lang.reflect.Method m = null;
-        try {
-            m = getClass().getMethod(TESTMETHOD_NAME);
-        } catch (NoSuchMethodException | SecurityException e) {
-            Asserts.fail("could not check compilation level of", e);
-        }
-        int highest_level = CompilerUtils.getMaxCompilationLevel();
-        Asserts.assertEQ(WB.getMethodCompilationLevel(m), highest_level,
-                TESTMETHOD_NAME + " not on expected compilation level");
-    }
-
-    private void msg(String m) {
-        System.out.println();
-        System.out.println("### " + m);
-        System.out.println();
     }
 }
 
@@ -151,13 +97,14 @@ public class EAMaterializeLocalVariableUponGet extends TestScaffold {
          * Get to the top of main() to determine targetClass and mainThread
          */
         String targetProgName = EAMaterializeLocalVariableUponGetTarget.class.getName();
+        String targetBaseName = EADebuggerTargetBase.class.getName();
         String testName = getClass().getSimpleName();
         BreakpointEvent bpe = startToMain(targetProgName);
         targetClass = bpe.location().declaringType();
         mainThread = bpe.thread();
 
-        resumeTo(targetProgName, "warmupDone", "()V");
-        bpe = resumeTo(targetProgName, "dontinline_brkpt", "()V");
+        resumeTo(targetBaseName, "warmupDone", "()V");
+        bpe = resumeTo(targetBaseName, "dontinline_brkpt", "()V");
 
         // print stack
         msg("Debuggee Stack:");
