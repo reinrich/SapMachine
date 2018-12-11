@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019 SAP SE. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -21,28 +21,42 @@
  * questions.
  */
 
-//    THIS TEST IS LINE NUMBER SENSITIVE
-
 /**
  * @test
  * @bug 7777777
  * @summary TODO
  * @author Richard Reingruber richard DOT reingruber AT sap DOT com
  *
- * @library /test/lib
+ * @library /test/lib /test/hotspot/jtreg
  *
- * @run build TestScaffold VMConnection TargetListener TargetAdapter
+ * @run build TestScaffold VMConnection TargetListener TargetAdapter sun.hotspot.WhiteBox
  * @run main jdk.test.lib.FileInstaller compilerDirectives.json compilerDirectives.json
+ * @run driver ClassFileInstaller sun.hotspot.WhiteBox
+ *                                sun.hotspot.WhiteBox$WhiteBoxPermission
  * @run compile -g MaterializeLocalVariableUponGet.java
- * @run driver MaterializeLocalVariableUponGet -XX:+TraceDeoptimization -XX:+PrintCompilation -XX:+PrintInlining -XX:-TieredCompilation -Xbatch -XX:CompilerDirectivesFile=compilerDirectives.json -XX:CICompilerCount=1
+ * @run driver MaterializeLocalVariableUponGet
+ *                 -Xbootclasspath/a:.
+ *                 -XX:+UnlockDiagnosticVMOptions
+ *                 -XX:+WhiteBoxAPI
+ *                 -XX:+TraceDeoptimization
+ *                 -XX:+PrintCompilation
+ *                 -XX:+PrintInlining
+ *                 -XX:-TieredCompilation
+ *                 -Xbatch
+ *                 -XX:CompilerDirectivesFile=compilerDirectives.json
+ *                 -XX:CICompilerCount=1
  */
 
 import java.util.List;
 
+import compiler.testlibrary.CompilerUtils;
+
 import com.sun.jdi.*;
 import com.sun.jdi.event.*;
+import sun.hotspot.WhiteBox;
 
 import jdk.test.lib.Asserts;
+
 
 // Manual execution:
 // export CLS_PATH="-cp /priv/d038402/git/reinrich/SapMachine/eclipse_java_projs/test.jdk/bin:/priv/d038402/git/reinrich/SapMachine/eclipse_java_projs/test.lib/bin"
@@ -53,39 +67,64 @@ import jdk.test.lib.Asserts;
 /********** target program **********/
 
 class MaterializeLocalVariableUponGetTarget {
+    private static final WhiteBox WB = WhiteBox.getWhiteBox();
 
-    private static final String name = MaterializeLocalVariableUponGetTarget.class.getName();
+    private static final String namee = MaterializeLocalVariableUponGetTarget.class.getName();
+    private static final int COMPILE_THRESHOLD = 20000;
 
-    public static void dontinline_brkpt() {
+    private static final String TESTMETHOD_NAME = "dontinline_testMethod";
+
+    public static void main(String[] args) {
+        new MaterializeLocalVariableUponGetTarget().run();
+    }
+
+    public void run() {
+        msg(getName() + " is up and running.");
+        compileTestMethod();
+        warmupDone();
+        checkCompLevel();
+        dontinline_testMethod();
+        msg(getName() + " is exiting.");
+    }
+
+    public void dontinline_brkpt() {
         // will set breakpoint here
     }
 
-    public static int dontinline_testMethod() {
+    public int dontinline_testMethod() {
         PointXY xy = new PointXY(4, 2);
         dontinline_brkpt();
         return xy.x + xy.y;
     }
 
-    public static void main(String[] args) {
-        msg(name + " is up and running.");
-        compileTestMethod();
-        warmupDone();
-        dontinline_testMethod();
-        msg(name + " is exiting.");
+    public String getName() {
+        return getClass().getName();
     }
 
-    private static void warmupDone() {
-        msg(name + " warmup done.");
+    private void warmupDone() {
+        msg(getName() + " warmup done.");
     }
 
-    public static void compileTestMethod() {
-        int callCount = 50000;
+    public void compileTestMethod() {
+        int callCount = COMPILE_THRESHOLD + 1000;
         while (callCount-- > 0) {
             dontinline_testMethod();
         }
     }
 
-    private static void msg(String m) {
+    public void checkCompLevel() {
+        java.lang.reflect.Method m = null;
+        try {
+            m = getClass().getMethod(TESTMETHOD_NAME);
+        } catch (NoSuchMethodException | SecurityException e) {
+            Asserts.fail("could not check compilation level of", e);
+        }
+        int highest_level = CompilerUtils.getMaxCompilationLevel();
+        Asserts.assertEQ(WB.getMethodCompilationLevel(m), highest_level,
+                TESTMETHOD_NAME + " not on expected compilation level");
+    }
+
+    private void msg(String m) {
         System.out.println();
         System.out.println("### " + m);
         System.out.println();
