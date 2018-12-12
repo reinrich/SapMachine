@@ -84,9 +84,8 @@ class EAMaterializeLocalAtObjectReturnTarget extends EADebuggerTargetBase {
     }
 
     @Override
-    public void checkResult() {
-        System.out.println("iResult:" + iResult);
-        Asserts.assertEQ(iResult, 29, "checking iResult");
+    public int getExpectedIResult() {
+        return 4 + 2 + 23;
     }
 }
 

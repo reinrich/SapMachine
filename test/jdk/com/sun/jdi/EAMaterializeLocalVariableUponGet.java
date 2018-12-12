@@ -74,6 +74,11 @@ class EAMaterializeLocalVariableUponGetTarget extends EADebuggerTargetBase {
         dontinline_brkpt();
         iResult = xy.x + xy.y;
     }
+
+    @Override
+    public int getExpectedIResult() {
+        return 4 + 2;
+    }
 }
 
  /********** test program **********/

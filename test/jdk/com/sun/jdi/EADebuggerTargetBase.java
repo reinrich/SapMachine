@@ -34,9 +34,9 @@ public abstract class EADebuggerTargetBase {
     public static final String TESTMETHOD_NAME = "dontinline_testMethod";
 
     public static final int COMPILE_THRESHOLD = 20000;
-    
+
     public static final WhiteBox WB = WhiteBox.getWhiteBox();
-    
+
     public int iResult;
 
     public void run() {
@@ -82,8 +82,13 @@ public abstract class EADebuggerTargetBase {
                 m + " not on expected compilation level");
     }
 
-    public void checkResult() {
-        // supposed to be overridden
+    // to be overridden as appropriate
+    public int getExpectedIResult() {
+        return 0;
+    }
+
+    private void checkResult() {
+        Asserts.assertEQ(iResult, getExpectedIResult(), "checking iResult");
     }
 
     public void msg(String m) {
