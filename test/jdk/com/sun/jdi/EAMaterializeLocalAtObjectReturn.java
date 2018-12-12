@@ -24,7 +24,7 @@
 /**
  * @test
  * @bug 7777777
- * @summary TODO: materialize object just before the debugger reads the local variable referencing it.
+ * @summary TODO: Materialize object in non-topframe at call returning an object
  * @author Richard Reingruber richard DOT reingruber AT sap DOT com
  *
  * @library /test/lib /test/hotspot/jtreg
@@ -33,8 +33,8 @@
  * @run main jdk.test.lib.FileInstaller compilerDirectives.json compilerDirectives.json
  * @run driver ClassFileInstaller sun.hotspot.WhiteBox
  *                                sun.hotspot.WhiteBox$WhiteBoxPermission
- * @run compile -g EAMaterializeLocalVariableUponGet.java
- * @run driver EAMaterializeLocalVariableUponGet
+ * @run compile -g EAMaterializeLocalAtObjectReturn.java
+ * @run driver EAMaterializeLocalAtObjectReturn
  *                 -Xbootclasspath/a:.
  *                 -XX:+UnlockDiagnosticVMOptions
  *                 -XX:+WhiteBoxAPI
@@ -57,37 +57,51 @@ import jdk.test.lib.Asserts;
 
 // Manual execution:
 // export CLS_PATH="-cp /priv/d038402/git/reinrich/SapMachine/eclipse_java_projs/test.jdk/bin:/priv/d038402/git/reinrich/SapMachine/eclipse_java_projs/test.lib/bin"
-// ./images/jdk/bin/java -Dtest.jdk=/priv/d038402/builds/SapMachine_lu0486_64_slowdebug/images/jdk $CLS_PATH EAMaterializeLocalVariableUponGet $CLS_PATH -XX:+TraceDeoptimization -XX:+PrintCompilation -XX:+PrintInlining -XX:-TieredCompilation -Xbatch -XX:-PrintOptoAssembly -XX:CompilerDirectivesFile=compilerDirectives.json -XX:CICompilerCount=1
+// ./images/jdk/bin/java -Dtest.jdk=/priv/d038402/builds/SapMachine_lu0486_64_slowdebug/images/jdk $CLS_PATH EAMaterializeLocalAtObjectReturn $CLS_PATH -XX:+TraceDeoptimization -XX:+PrintCompilation -XX:+PrintInlining -XX:-TieredCompilation -Xbatch -XX:-PrintOptoAssembly -XX:CompilerDirectivesFile=compilerDirectives.json -XX:CICompilerCount=1
 
 // TODO: remove trace options like '-XX:+PrintCompilation -XX:+PrintInlining' to avoid deadlock as in https://bugs.openjdk.java.net/browse/JDK-8213902
 
 /********** target program **********/
 
-class EAMaterializeLocalVariableUponGetTarget extends EADebuggerTargetBase {
+class EAMaterializeLocalAtObjectReturnTarget extends EADebuggerTargetBase {
 
     public static void main(String[] args) {
-        new EAMaterializeLocalVariableUponGetTarget().run();
+        new EAMaterializeLocalAtObjectReturnTarget().run();
     }
 
+    // TODO: Materialize object in non-topframe at call returning an object
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(4, 2);
+        Integer io = dontinline_brkpt_return_Integer();
+        iResult = xy.x + xy.y + io;
+    }
+
+    public Integer dontinline_brkpt_return_Integer() {
+        // We can't break directly in this method, as this results in making
+        // the test method not entrant caused by an existing dependency
         dontinline_brkpt();
-        iResult = xy.x + xy.y;
+        return Integer.valueOf(23);
+    }
+
+    @Override
+    public void checkResult() {
+        System.out.println("iResult:" + iResult);
+        Asserts.assertEQ(iResult, 29, "checking iResult");
     }
 }
 
  /********** test program **********/
 
-public class EAMaterializeLocalVariableUponGet extends TestScaffold {
+public class EAMaterializeLocalAtObjectReturn extends TestScaffold {
     ReferenceType targetClass;
     ThreadReference mainThread;
 
-    EAMaterializeLocalVariableUponGet (String args[]) {
+    EAMaterializeLocalAtObjectReturn (String args[]) {
         super(args);
     }
 
     public static void main(String[] args) throws Exception {
-        new EAMaterializeLocalVariableUponGet (args).startTests();
+        new EAMaterializeLocalAtObjectReturn (args).startTests();
     }
 
     /********** test core **********/
@@ -96,7 +110,7 @@ public class EAMaterializeLocalVariableUponGet extends TestScaffold {
         /*
          * Get to the top of main() to determine targetClass and mainThread
          */
-        String targetProgName = EAMaterializeLocalVariableUponGetTarget.class.getName();
+        String targetProgName = EAMaterializeLocalAtObjectReturnTarget.class.getName();
         String targetBaseName = EADebuggerTargetBase.class.getName();
         String testName = getClass().getSimpleName();
         BreakpointEvent bpe = startToMain(targetProgName);
@@ -116,7 +130,7 @@ public class EAMaterializeLocalVariableUponGet extends TestScaffold {
         }
         
         // retrieve scalar replaced object
-        StackFrame frame = bpe.thread().frame(1);
+        StackFrame frame = bpe.thread().frame(2);
         Asserts.assertEQ("dontinline_testMethod", frame.location().method().name());
         List<LocalVariable> localVars = frame.visibleVariables();
         msg("Check if the local variable xy in dontinline_testMethod() has the expected value: ");

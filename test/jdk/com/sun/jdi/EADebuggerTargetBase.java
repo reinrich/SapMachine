@@ -36,6 +36,8 @@ public abstract class EADebuggerTargetBase {
     public static final int COMPILE_THRESHOLD = 20000;
     
     public static final WhiteBox WB = WhiteBox.getWhiteBox();
+    
+    public int iResult;
 
     public void run() {
         msg(getName() + " is up and running.");
@@ -43,10 +45,11 @@ public abstract class EADebuggerTargetBase {
         warmupDone();
         checkCompLevel();
         dontinline_testMethod();
+        checkResult();
         msg(getName() + " is exiting.");
     }
 
-    public abstract int dontinline_testMethod();
+    public abstract void dontinline_testMethod();
 
     public void dontinline_brkpt() {
         // will set breakpoint here
@@ -76,7 +79,11 @@ public abstract class EADebuggerTargetBase {
         }
         int highest_level = CompilerUtils.getMaxCompilationLevel();
         Asserts.assertEQ(WB.getMethodCompilationLevel(m), highest_level,
-                TESTMETHOD_NAME + " not on expected compilation level");
+                m + " not on expected compilation level");
+    }
+
+    public void checkResult() {
+        // supposed to be overridden
     }
 
     public void msg(String m) {
