@@ -89,16 +89,17 @@ Manual execution:
 
 // TODO: remove trace options like '-XX:+PrintCompilation -XX:+PrintInlining' to avoid deadlock as in https://bugs.openjdk.java.net/browse/JDK-8213902
 
-/********** target program **********/
-
+// Target program, i.e. the program to be debugged. 
 class EATestsTarget {
 
     public static void main(String[] args) {
-        new EAMaterializeLocalVariableUponGetTarget().run();
-        new EAMaterializeLocalAtObjectReturnTarget() .run();
+        new EATargetMaterializeLocalVariableUponGet().run();
+        new EATargetMaterializeLocalAtObjectReturn() .run();
+        new EATargetMaterializeIntArray()            .run();
     }
 }
 
+// Base class for debuggee side of test cases.
 abstract class EATargetTestCaseBase implements Runnable {
 
     public static final String TESTMETHOD_NAME = "dontinline_testMethod";
@@ -183,10 +184,10 @@ class PointXY {
     }
 }
 
-class EAMaterializeLocalVariableUponGetTarget extends EATargetTestCaseBase {
+class EATargetMaterializeLocalVariableUponGet extends EATargetTestCaseBase {
 
     public static void main(String[] args) {
-        new EAMaterializeLocalVariableUponGetTarget().run();
+        new EATargetMaterializeLocalVariableUponGet().run();
     }
 
     public void dontinline_testMethod() {
@@ -201,7 +202,7 @@ class EAMaterializeLocalVariableUponGetTarget extends EATargetTestCaseBase {
     }
 }
 
-class EAMaterializeLocalAtObjectReturnTarget extends EATargetTestCaseBase {
+class EATargetMaterializeLocalAtObjectReturn extends EATargetTestCaseBase {
     // TODO: Materialize object in non-topframe at call returning an object
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(4, 2);
@@ -222,8 +223,26 @@ class EAMaterializeLocalAtObjectReturnTarget extends EATargetTestCaseBase {
     }
 }
 
- /********** test program **********/
+class EATargetMaterializeIntArray extends EATargetTestCaseBase {
 
+    public static void main(String[] args) {
+        new EATargetMaterializeIntArray().run();
+    }
+
+    public void dontinline_testMethod() {
+//        int nums[] = {oneI , twoI, threeI}; // don't use constant values!
+        int nums[] = {1 , 2, 3}; // don't use constant values!
+        dontinline_brkpt();
+        iResult = nums[0] + nums[1] + nums[2];
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 4 + 2;
+    }
+}
+
+//Base class for debugger side of test cases.
 abstract class EATestCaseBase implements Runnable {
 
     protected EATests env;
@@ -292,6 +311,7 @@ abstract class EATestCaseBase implements Runnable {
         env.msgHL(m);
     }
 
+    // retrieve and check scalar replaced object
     public void checkLocalPointXYRef(StackFrame frame, String expectedMethodName, String lName) throws Exception {
         String lType = "PointXY";
         Asserts.assertEQ(expectedMethodName, frame.location().method().name());
@@ -318,29 +338,55 @@ abstract class EATestCaseBase implements Runnable {
         Asserts.assertTrue(found);
         msg("OK.");
     }
+
+    protected void checkLocalIntArray(StackFrame frame, String expectedMethodName, String lName, int[] vals) throws Exception {
+        String lType = "int[]";
+        Asserts.assertEQ(EATargetTestCaseBase.TESTMETHOD_NAME, frame .location().method().name());
+        List<LocalVariable> localVars = frame.visibleVariables();
+        msg("Check if the local array variable " + lName  + " in " + EATargetTestCaseBase.TESTMETHOD_NAME + " has the expected elements: ");
+        boolean found = false;
+        for (LocalVariable lv : localVars) {
+            if (lv.name().equals(lName)) {
+                found  = true;
+                Value lVal = frame.getValue(lv);
+                Asserts.assertNotNull(lVal);
+                Asserts.assertEQ(lVal.type().name(), lType);
+                ArrayReference aRef = (ArrayReference) lVal;
+                Asserts.assertEQ(aRef.length(), 3);
+                // now check the elements
+                for (int i = 0; i < vals.length; i++) {
+                    Value val = aRef.getValue(i);
+                    Asserts.assertEQ(((PrimitiveValue)val).intValue(), vals[i], "checking element at index " + i);
+                }
+            }
+        }
+        Asserts.assertTrue(found);
+        msg("OK.");
+    }
 }
 
 class EAMaterializeLocalVariableUponGet extends EATestCaseBase {
-    
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-
         printStack(bpe);
-
-        // retrieve and check scalar replaced object
         checkLocalPointXYRef(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "xy");
     }
 }
 
 class EAMaterializeLocalAtObjectReturn extends EATestCaseBase {
-
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-
         printStack(bpe);
-
-        // retrieve and check scalar replaced object
         checkLocalPointXYRef(bpe.thread().frame(2), EATargetTestCaseBase.TESTMETHOD_NAME, "xy");
+    }
+}
+
+class EAMaterializeIntArray extends EATestCaseBase {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        int[] expectedVals = {1, 2, 3};
+        checkLocalIntArray(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "nums", expectedVals);
     }
 }
 
@@ -354,8 +400,7 @@ public class EATests extends TestScaffold {
         new EATests(args).startTests();
     }
 
-    /********** test core **********/
-
+    // Execute known test cases
     protected void runTests() throws Exception {
         String targetProgName = EATestsTarget.class.getName();
         msg("starting to main method in class " +  targetProgName);
@@ -363,25 +408,20 @@ public class EATests extends TestScaffold {
 
         new EAMaterializeLocalVariableUponGet().setScaffold(this).run();
         new EAMaterializeLocalAtObjectReturn() .setScaffold(this).run();
+        new EAMaterializeIntArray()            .setScaffold(this).run();
 
         // resume the target listening for events
         listenUntilVMDisconnect();
     }
 
-    /**
-     * Print a Message
-     * @param m Message
-     */
+    // Print a Message
     public void msg(String m) {
         System.out.println();
         System.out.println("### " + m);
         System.out.println();
     }
 
-    /**
-     * Highlighted message.
-     * @param m The message
-     */
+    // Highlighted message.
     public void msgHL(String m) {
         System.out.println();
         System.out.println();
