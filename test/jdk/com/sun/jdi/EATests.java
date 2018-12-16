@@ -94,6 +94,7 @@ class EATestsTarget {
 
     public static void main(String[] args) {
         new EATargetMaterializeLocalVariableUponGet().run();
+        new EATargetGetWithoutMaterialize()          .run();
         new EATargetMaterializeLocalAtObjectReturn() .run();
         new EATargetMaterializeIntArray()            .run();
     }
@@ -110,7 +111,14 @@ abstract class EATargetTestCaseBase implements Runnable {
 
     public int iResult;
 
+    public int testMethodDepth;
+
+    public boolean testFrameShouldBeDeoptimized;
+
+    private boolean warmupDone;
+
     public void run() {
+        setUp();
         msg(getName() + " is up and running.");
         compileTestMethod();
         warmupDone();
@@ -120,10 +128,22 @@ abstract class EATargetTestCaseBase implements Runnable {
         testCaseDone();
     }
 
+    public void setUp() {
+        testMethodDepth = 1;
+        testFrameShouldBeDeoptimized = true;
+    }
+
     public abstract void dontinline_testMethod();
 
     public void dontinline_brkpt() {
-        // will set breakpoint here
+        // will set breakpoint here after warmup
+        if (warmupDone) {
+            if (testFrameShouldBeDeoptimized) {
+                Asserts.assertTrue(WB.isFrameDeoptimized(testMethodDepth+1), getName() + ": expected test method frame at depth " + testMethodDepth + " to be deoptimized");
+            } else {
+                Asserts.assertFalse(WB.isFrameDeoptimized(testMethodDepth+1), getName() + ": expected test method frame at depth " + testMethodDepth + " not to be deoptimized");
+            }
+        }
     }
 
     public String getName() {
@@ -132,6 +152,7 @@ abstract class EATargetTestCaseBase implements Runnable {
 
     public void warmupDone() {
         msg(getName() + " warmup done.");
+        warmupDone = true;
     }
 
     public void testCaseDone() {
@@ -184,11 +205,31 @@ class PointXY {
     }
 }
 
-class EATargetMaterializeLocalVariableUponGet extends EATargetTestCaseBase {
+//make sure a compiled frame is not deoptimized if an escaping local is accessed
+class EATargetGetWithoutMaterialize extends EATargetTestCaseBase {
 
-    public static void main(String[] args) {
-        new EATargetMaterializeLocalVariableUponGet().run();
+    public PointXY getAway;
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testFrameShouldBeDeoptimized = false;
     }
+
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(4, 2);
+        getAway = xy;
+        dontinline_brkpt();
+        iResult = xy.x + xy.y;
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 4 + 2;
+    }
+}
+
+class EATargetMaterializeLocalVariableUponGet extends EATargetTestCaseBase {
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(4, 2);
@@ -203,6 +244,12 @@ class EATargetMaterializeLocalVariableUponGet extends EATargetTestCaseBase {
 }
 
 class EATargetMaterializeLocalAtObjectReturn extends EATargetTestCaseBase {
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+    }
+
     // TODO: Materialize object in non-topframe at call returning an object
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(4, 2);
@@ -365,6 +412,15 @@ abstract class EATestCaseBase implements Runnable {
     }
 }
 
+// make sure a compiled frame is not deoptimized if an escaping local is accessed
+class EAGetWithoutMaterialize extends EATestCaseBase {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        checkLocalPointXYRef(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "xy");
+    }
+}
+
 class EAMaterializeLocalVariableUponGet extends EATestCaseBase {
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
@@ -407,6 +463,7 @@ public class EATests extends TestScaffold {
         startToMain(targetProgName);
 
         new EAMaterializeLocalVariableUponGet().setScaffold(this).run();
+        new EAGetWithoutMaterialize()          .setScaffold(this).run();
         new EAMaterializeLocalAtObjectReturn() .setScaffold(this).run();
         new EAMaterializeIntArray()            .setScaffold(this).run();
 
