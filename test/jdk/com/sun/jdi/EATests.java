@@ -277,8 +277,7 @@ class EATargetMaterializeIntArray extends EATargetTestCaseBase {
     }
 
     public void dontinline_testMethod() {
-//        int nums[] = {oneI , twoI, threeI}; // don't use constant values!
-        int nums[] = {1 , 2, 3}; // don't use constant values!
+        int nums[] = {1 , 2, 3};
         dontinline_brkpt();
         iResult = nums[0] + nums[1] + nums[2];
     }
