@@ -101,6 +101,8 @@ class EATestsTarget {
         new EATargetMaterializeLocalAtObjectReturn() .run();
         new EATargetMaterializeIntArray()            .run();
         new EATargetMaterializeLongArray()           .run();
+        new EATargetMaterializeFloatArray()          .run();
+        new EATargetMaterializeDoubleArray()         .run();
     }
 }
 
@@ -115,6 +117,8 @@ abstract class EATargetTestCaseBase implements Runnable {
 
     public int  iResult;
     public long lResult;
+    public float  fResult;
+    public double dResult;
 
     public int testMethodDepth;
 
@@ -193,9 +197,21 @@ abstract class EATargetTestCaseBase implements Runnable {
         return 0;
     }
 
+    // to be overridden as appropriate
+    public float getExpectedFResult() {
+        return 0f;
+    }
+
+    // to be overridden as appropriate
+    public double getExpectedDResult() {
+        return 0d;
+    }
+
     private void checkResult() {
         Asserts.assertEQ(iResult, getExpectedIResult(), "checking iResult");
         Asserts.assertEQ(lResult, getExpectedLResult(), "checking lResult");
+        Asserts.assertEQ(fResult, getExpectedFResult(), "checking fResult");
+        Asserts.assertEQ(dResult, getExpectedDResult(), "checking dResult");
     }
 
     public void msg(String m) {
@@ -283,10 +299,6 @@ class EATargetMaterializeLocalAtObjectReturn extends EATargetTestCaseBase {
 
 class EATargetMaterializeIntArray extends EATargetTestCaseBase {
 
-    public static void main(String[] args) {
-        new EATargetMaterializeIntArray().run();
-    }
-
     public void dontinline_testMethod() {
         int nums[] = {1 , 2, 3};
         dontinline_brkpt();
@@ -301,10 +313,6 @@ class EATargetMaterializeIntArray extends EATargetTestCaseBase {
 
 class EATargetMaterializeLongArray extends EATargetTestCaseBase {
 
-    public static void main(String[] args) {
-        new EATargetMaterializeIntArray().run();
-    }
-
     public void dontinline_testMethod() {
         long nums[] = {1 , 2, 3};
         dontinline_brkpt();
@@ -316,6 +324,35 @@ class EATargetMaterializeLongArray extends EATargetTestCaseBase {
         return 1 + 2 + 3;
     }
 }
+
+class EATargetMaterializeFloatArray extends EATargetTestCaseBase {
+
+    public void dontinline_testMethod() {
+        float nums[] = {1.1f , 2.2f, 3.3f};
+        dontinline_brkpt();
+        fResult = nums[0] + nums[1] + nums[2];
+    }
+
+    @Override
+    public float getExpectedFResult() {
+        return 1.1f + 2.2f + 3.3f;
+    }
+}
+
+class EATargetMaterializeDoubleArray extends EATargetTestCaseBase {
+
+    public void dontinline_testMethod() {
+        double nums[] = {1.1d , 2.2d, 3.3d};
+        dontinline_brkpt();
+        dResult = nums[0] + nums[1] + nums[2];
+    }
+
+    @Override
+    public double getExpectedDResult() {
+        return 1.1d + 2.2d + 3.3d;
+    }
+}
+
 
 //Base class for debugger side of test cases.
 abstract class EATestCaseBase implements Runnable {
@@ -419,16 +456,20 @@ abstract class EATestCaseBase implements Runnable {
     enum FD {
         I, // int
         J, // long
+        F, // float
+        D, // double
     }
     
 
     // Map field descriptor to jdi type string
-    public static final Map<FD, String> FD2JDIType = Map.of(FD.I, "int[]", FD.J, "long[]");
+    public static final Map<FD, String> FD2JDIType = Map.of(FD.I, "int[]", FD.J, "long[]", FD.F, "float[]", FD.D, "double[]");
 
     // Map field descriptor to PrimitiveValue getter
     public static final Function<PrimitiveValue, Integer> v2I = PrimitiveValue::intValue;
-    public static final Function<PrimitiveValue, Long> v2J = PrimitiveValue::longValue;
-    Map<FD, Function<PrimitiveValue, ?>> FD2getter = Map.of(FD.I, v2I, FD.J, v2J);
+    public static final Function<PrimitiveValue, Long>    v2J = PrimitiveValue::longValue;
+    public static final Function<PrimitiveValue, Float>   v2F = PrimitiveValue::floatValue;
+    public static final Function<PrimitiveValue, Double>  v2D = PrimitiveValue::doubleValue;
+    Map<FD, Function<PrimitiveValue, ?>> FD2getter = Map.of(FD.I, v2I, FD.J, v2J, FD.F, v2F, FD.D, v2D);
 
     protected void checkLocalPrimitiveArray(StackFrame frame, String expectedMethodName, String lName, FD desc, Object expVals) throws Exception {
         String lType = FD2JDIType.get(desc);
@@ -501,6 +542,24 @@ class EAMaterializeLongArray extends EATestCaseBase {
     }
 }
 
+class EAMaterializeFloatArray extends EATestCaseBase {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        float[] expectedVals = {1.1f, 2.2f, 3.3f};
+        checkLocalPrimitiveArray(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "nums", FD.F, expectedVals);
+    }
+}
+
+class EAMaterializeDoubleArray extends EATestCaseBase {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        double[] expectedVals = {1.1d, 2.2d, 3.3d};
+        checkLocalPrimitiveArray(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "nums", FD.D, expectedVals);
+    }
+}
+
 public class EATests extends TestScaffold {
 
     EATests (String args[]) {
@@ -522,6 +581,8 @@ public class EATests extends TestScaffold {
         new EAMaterializeLocalAtObjectReturn() .setScaffold(this).run();
         new EAMaterializeIntArray()            .setScaffold(this).run();
         new EAMaterializeLongArray()           .setScaffold(this).run();
+        new EAMaterializeFloatArray()          .setScaffold(this).run();
+        new EAMaterializeDoubleArray()         .setScaffold(this).run();
 
         // resume the target listening for events
         listenUntilVMDisconnect();
