@@ -47,7 +47,10 @@
  *                 -XX:CICompilerCount=1
  */
 
+import java.lang.reflect.Array;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 
 import com.sun.jdi.*;
 import com.sun.jdi.event.*;
@@ -97,6 +100,7 @@ class EATestsTarget {
         new EATargetGetWithoutMaterialize()          .run();
         new EATargetMaterializeLocalAtObjectReturn() .run();
         new EATargetMaterializeIntArray()            .run();
+        new EATargetMaterializeLongArray()           .run();
     }
 }
 
@@ -109,7 +113,8 @@ abstract class EATargetTestCaseBase implements Runnable {
 
     public static final WhiteBox WB = WhiteBox.getWhiteBox();
 
-    public int iResult;
+    public int  iResult;
+    public long lResult;
 
     public int testMethodDepth;
 
@@ -183,8 +188,14 @@ abstract class EATargetTestCaseBase implements Runnable {
         return 0;
     }
 
+    // to be overridden as appropriate
+    public long getExpectedLResult() {
+        return 0;
+    }
+
     private void checkResult() {
         Asserts.assertEQ(iResult, getExpectedIResult(), "checking iResult");
+        Asserts.assertEQ(lResult, getExpectedLResult(), "checking lResult");
     }
 
     public void msg(String m) {
@@ -284,7 +295,25 @@ class EATargetMaterializeIntArray extends EATargetTestCaseBase {
 
     @Override
     public int getExpectedIResult() {
-        return 4 + 2;
+        return 1 + 2 + 3;
+    }
+}
+
+class EATargetMaterializeLongArray extends EATargetTestCaseBase {
+
+    public static void main(String[] args) {
+        new EATargetMaterializeIntArray().run();
+    }
+
+    public void dontinline_testMethod() {
+        long nums[] = {1 , 2, 3};
+        dontinline_brkpt();
+        lResult = nums[0] + nums[1] + nums[2];
+    }
+
+    @Override
+    public long getExpectedLResult() {
+        return 1 + 2 + 3;
     }
 }
 
@@ -384,9 +413,26 @@ abstract class EATestCaseBase implements Runnable {
         Asserts.assertTrue(found);
         msg("OK.");
     }
+    
+    // See 4.3.2. Field Descriptors in The Java Virtual Machine Specification
+    // (https://docs.oracle.com/javase/specs/jvms/se11/html/jvms-4.html#jvms-4.3.2)
+    enum FD {
+        I, // int
+        J, // long
+    }
+    
 
-    protected void checkLocalIntArray(StackFrame frame, String expectedMethodName, String lName, int[] vals) throws Exception {
-        String lType = "int[]";
+    // Map field descriptor to jdi type string
+    public static final Map<FD, String> FD2JDIType = Map.of(FD.I, "int[]", FD.J, "long[]");
+
+    // Map field descriptor to PrimitiveValue getter
+    public static final Function<PrimitiveValue, Integer> v2I = PrimitiveValue::intValue;
+    public static final Function<PrimitiveValue, Long> v2J = PrimitiveValue::longValue;
+    Map<FD, Function<PrimitiveValue, ?>> FD2getter = Map.of(FD.I, v2I, FD.J, v2J);
+
+    protected void checkLocalPrimitiveArray(StackFrame frame, String expectedMethodName, String lName, FD desc, Object expVals) throws Exception {
+        String lType = FD2JDIType.get(desc);
+        Asserts.assertNotNull(lType, "jdi type not found");
         Asserts.assertEQ(EATargetTestCaseBase.TESTMETHOD_NAME, frame .location().method().name());
         List<LocalVariable> localVars = frame.visibleVariables();
         msg("Check if the local array variable " + lName  + " in " + EATargetTestCaseBase.TESTMETHOD_NAME + " has the expected elements: ");
@@ -400,9 +446,10 @@ abstract class EATestCaseBase implements Runnable {
                 ArrayReference aRef = (ArrayReference) lVal;
                 Asserts.assertEQ(aRef.length(), 3);
                 // now check the elements
-                for (int i = 0; i < vals.length; i++) {
-                    Value val = aRef.getValue(i);
-                    Asserts.assertEQ(((PrimitiveValue)val).intValue(), vals[i], "checking element at index " + i);
+                for (int i = 0; i < aRef.length(); i++) {
+                    Object actVal = FD2getter.get(desc).apply((PrimitiveValue)aRef.getValue(i));
+                    Object expVal = Array.get(expVals, i);
+                    Asserts.assertEQ(actVal, expVal , "checking element at index " + i);
                 }
             }
         }
@@ -441,7 +488,16 @@ class EAMaterializeIntArray extends EATestCaseBase {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
         int[] expectedVals = {1, 2, 3};
-        checkLocalIntArray(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "nums", expectedVals);
+        checkLocalPrimitiveArray(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "nums", FD.I, expectedVals);
+    }
+}
+
+class EAMaterializeLongArray extends EATestCaseBase {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        long[] expectedVals = {1, 2, 3};
+        checkLocalPrimitiveArray(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "nums", FD.J, expectedVals);
     }
 }
 
@@ -465,6 +521,7 @@ public class EATests extends TestScaffold {
         new EAGetWithoutMaterialize()          .setScaffold(this).run();
         new EAMaterializeLocalAtObjectReturn() .setScaffold(this).run();
         new EAMaterializeIntArray()            .setScaffold(this).run();
+        new EAMaterializeLongArray()           .setScaffold(this).run();
 
         // resume the target listening for events
         listenUntilVMDisconnect();
