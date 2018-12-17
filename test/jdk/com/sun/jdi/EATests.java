@@ -482,7 +482,7 @@ public class EATests extends TestScaffold {
     public void msgHL(String m) {
         System.out.println();
         System.out.println();
-        System.out.println("### ");
+        System.out.println("##########################################################");
         System.out.println("### " + m);
         System.out.println("### ");
         System.out.println();
