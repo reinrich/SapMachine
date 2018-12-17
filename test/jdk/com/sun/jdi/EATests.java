@@ -103,6 +103,7 @@ class EATestsTarget {
         new EATargetMaterializeLongArray()           .run();
         new EATargetMaterializeFloatArray()          .run();
         new EATargetMaterializeDoubleArray()         .run();
+        new EATargetMaterializeObjectArray()         .run();
     }
 }
 
@@ -125,6 +126,10 @@ abstract class EATargetTestCaseBase implements Runnable {
     public boolean testFrameShouldBeDeoptimized;
 
     private boolean warmupDone;
+
+    public static Long oneO   = Long.valueOf(1);
+    public static Long twoO   = Long.valueOf(2);
+    public static Long threeO = Long.valueOf(3);
 
     public void run() {
         setUp();
@@ -353,6 +358,20 @@ class EATargetMaterializeDoubleArray extends EATargetTestCaseBase {
     }
 }
 
+class EATargetMaterializeObjectArray extends EATargetTestCaseBase {
+
+    public void dontinline_testMethod() {
+        Long nums[] = {oneO , twoO, threeO};
+        dontinline_brkpt();
+        lResult = nums[0] + nums[1] + nums[2];
+    }
+
+    @Override
+    public long getExpectedLResult() {
+        return 1 + 2 + 3;
+    }
+}
+
 
 //Base class for debugger side of test cases.
 abstract class EATestCaseBase implements Runnable {
@@ -497,6 +516,30 @@ abstract class EATestCaseBase implements Runnable {
         Asserts.assertTrue(found);
         msg("OK.");
     }
+
+    protected void checkLocalObjectArray(StackFrame frame, String expectedMethodName, String lName, String lType, ObjectReference[] expVals) throws Exception {
+        Asserts.assertEQ(EATargetTestCaseBase.TESTMETHOD_NAME, frame .location().method().name());
+        List<LocalVariable> localVars = frame.visibleVariables();
+        msg("Check if the local array variable " + lName  + " in " + EATargetTestCaseBase.TESTMETHOD_NAME + " has the expected elements: ");
+        boolean found = false;
+        for (LocalVariable lv : localVars) {
+            if (lv.name().equals(lName)) {
+                found  = true;
+                Value lVal = frame.getValue(lv);
+                Asserts.assertNotNull(lVal);
+                Asserts.assertEQ(lVal.type().name(), lType);
+                ArrayReference aRef = (ArrayReference) lVal;
+                Asserts.assertEQ(aRef.length(), 3);
+                // now check the elements
+                for (int i = 0; i < aRef.length(); i++) {
+                    ObjectReference actVal = (ObjectReference)aRef.getValue(i);
+                    Asserts.assertSame(actVal, expVals[i] , "checking element at index " + i);
+                }
+            }
+        }
+        Asserts.assertTrue(found);
+        msg("OK.");
+    }
 }
 
 // make sure a compiled frame is not deoptimized if an escaping local is accessed
@@ -560,6 +603,24 @@ class EAMaterializeDoubleArray extends EATestCaseBase {
     }
 }
 
+class EAMaterializeObjectArray extends EATestCaseBase {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference[] expectedVals = getExpectedVals(bpe.thread().frame(0));
+        checkLocalObjectArray(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "nums", "java.lang.Long[]", expectedVals);
+    }
+
+    public ObjectReference[] getExpectedVals(StackFrame stackFrame) {
+        ObjectReference[] result = new ObjectReference[3];
+        ReferenceType clazz = stackFrame.location().declaringType();
+        result[0] = (ObjectReference) clazz.getValue(clazz.fieldByName("oneO"));
+        result[1] = (ObjectReference) clazz.getValue(clazz.fieldByName("twoO"));
+        result[2] = (ObjectReference) clazz.getValue(clazz.fieldByName("threeO"));
+        return result;
+    }
+}
+
 public class EATests extends TestScaffold {
 
     EATests (String args[]) {
@@ -583,6 +644,7 @@ public class EATests extends TestScaffold {
         new EAMaterializeLongArray()           .setScaffold(this).run();
         new EAMaterializeFloatArray()          .setScaffold(this).run();
         new EAMaterializeDoubleArray()         .setScaffold(this).run();
+        new EAMaterializeObjectArray()         .setScaffold(this).run();
 
         // resume the target listening for events
         listenUntilVMDisconnect();
