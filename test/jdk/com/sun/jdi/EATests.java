@@ -415,9 +415,9 @@ class EAMaterializeObjectArray extends EATestCaseBaseDebugger {
  public ObjectReference[] getExpectedVals(StackFrame stackFrame) {
      ObjectReference[] result = new ObjectReference[3];
      ReferenceType clazz = stackFrame.location().declaringType();
-     result[0] = (ObjectReference) clazz.getValue(clazz.fieldByName("oneO"));
-     result[1] = (ObjectReference) clazz.getValue(clazz.fieldByName("twoO"));
-     result[2] = (ObjectReference) clazz.getValue(clazz.fieldByName("threeO"));
+     result[0] = (ObjectReference) clazz.getValue(clazz.fieldByName("NOT_CONST_1_OBJ"));
+     result[1] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_2_OBJ"));
+     result[2] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_3_OBJ"));
      return result;
  }
 }
@@ -463,9 +463,14 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
     private boolean warmupDone;
 
 
-    public static final Long oneO   = Long.valueOf(1);
-    public static final Long twoO   = Long.valueOf(2);
-    public static final Long threeO = Long.valueOf(3);
+    public static int    NOT_CONST_1I = 1;
+    public static long   NOT_CONST_1L = 1L;
+    public static float  NOT_CONST_1F = 1.1F;
+    public static double NOT_CONST_1D = 1.1D;
+
+    public static          Long NOT_CONST_1_OBJ = Long.valueOf(1);
+    public static final    Long CONST_2_OBJ     = Long.valueOf(2);
+    public static final    Long CONST_3_OBJ     = Long.valueOf(3);
 
     public void run() {
         msg("EATestsTarget.RUN_ONLY_TEST_CASE=" + EATestCaseBaseShared.RUN_ONLY_TEST_CASE);
@@ -639,66 +644,72 @@ class EAMaterializeLocalAtObjectReturnTarget extends EATestCaseBaseTarget {
     }
 }
 
+//////////////////////////////////////////////////////////////////////
+// Test case collection that tests rematerialization of different
+// array types, where the first element is always not constant and the
+// other elements are constants. Not constant values are stored in
+// the stack frame for rematerialization whereas constants are kept
+// in the debug info of the nmethod.
 class EAMaterializeIntArrayTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
-        int nums[] = {1 , 2, 3};
+        int nums[] = {NOT_CONST_1I , 2, 3};
         dontinline_brkpt();
         iResult = nums[0] + nums[1] + nums[2];
     }
 
     @Override
     public int getExpectedIResult() {
-        return 1 + 2 + 3;
+        return NOT_CONST_1I + 2 + 3;
     }
 }
 
 class EAMaterializeLongArrayTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
-        long nums[] = {1 , 2, 3};
+        long nums[] = {NOT_CONST_1L , 2, 3};
         dontinline_brkpt();
         lResult = nums[0] + nums[1] + nums[2];
     }
 
     @Override
     public long getExpectedLResult() {
-        return 1 + 2 + 3;
+        return NOT_CONST_1L + 2 + 3;
     }
 }
 
 class EAMaterializeFloatArrayTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
-        float nums[] = {1.1f , 2.2f, 3.3f};
+        float nums[] = {NOT_CONST_1F , 2.2f, 3.3f};
         dontinline_brkpt();
         fResult = nums[0] + nums[1] + nums[2];
     }
 
     @Override
     public float getExpectedFResult() {
-        return 1.1f + 2.2f + 3.3f;
+        return NOT_CONST_1F + 2.2f + 3.3f;
     }
 }
 
 class EAMaterializeDoubleArrayTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
-        double nums[] = {1.1d , 2.2d, 3.3d};
+        double nums[] = {NOT_CONST_1D , 2.2d, 3.3d};
         dontinline_brkpt();
         dResult = nums[0] + nums[1] + nums[2];
     }
 
     @Override
     public double getExpectedDResult() {
-        return 1.1d + 2.2d + 3.3d;
+        return NOT_CONST_1D + 2.2d + 3.3d;
     }
 }
 
 class EAMaterializeObjectArrayTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
-        Long nums[] = {oneO , twoO, threeO};
+        Long nums[] = {NOT_CONST_1_OBJ , CONST_2_OBJ, CONST_3_OBJ};
         dontinline_brkpt();
         lResult = nums[0] + nums[1] + nums[2];
     }
@@ -708,3 +719,6 @@ class EAMaterializeObjectArrayTarget extends EATestCaseBaseTarget {
         return 1 + 2 + 3;
     }
 }
+
+// End of test case collection
+//////////////////////////////////////////////////////////////////////
