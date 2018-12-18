@@ -73,7 +73,7 @@ Manual execution:
         $VMOPTS
         -agentlib:jdwp=transport=dt_socket,address=9000,server=y,suspend=n
         EATests
-        
+
         -Xbootclasspath/a:${REPO}/OpenJDKEclipseProjs/test.lib/bin  # WhiteBox.class
         -XX:+UnlockDiagnosticVMOptions
         -XX:+WhiteBoxAPI
@@ -92,7 +92,7 @@ Manual execution:
 
 // TODO: remove trace options like '-XX:+PrintCompilation -XX:+PrintInlining' to avoid deadlock as in https://bugs.openjdk.java.net/browse/JDK-8213902
 
-// Target program, i.e. the program to be debugged. 
+// Target program, i.e. the program to be debugged.
 class EATestsTarget {
 
     public static void main(String[] args) {
@@ -105,6 +105,7 @@ class EATestsTarget {
         new EATargetMaterializeDoubleArray()         .run();
         new EATargetMaterializeObjectArray()         .run();
     }
+
 }
 
 // Base class for debuggee side of test cases.
@@ -430,7 +431,6 @@ abstract class EATestCaseBase implements Runnable {
         int i = 0;
         for (StackFrame ff : stack_frames) {
             System.out.println("frame[" + i++ +"]: " + ff.location().method());
-           
         }
     }
 
@@ -469,7 +469,7 @@ abstract class EATestCaseBase implements Runnable {
         Asserts.assertTrue(found);
         msg("OK.");
     }
-    
+
     // See 4.3.2. Field Descriptors in The Java Virtual Machine Specification
     // (https://docs.oracle.com/javase/specs/jvms/se11/html/jvms-4.html#jvms-4.3.2)
     enum FD {
@@ -478,7 +478,7 @@ abstract class EATestCaseBase implements Runnable {
         F, // float
         D, // double
     }
-    
+
 
     // Map field descriptor to jdi type string
     public static final Map<FD, String> FD2JDIType = Map.of(FD.I, "int[]", FD.J, "long[]", FD.F, "float[]", FD.D, "double[]");
