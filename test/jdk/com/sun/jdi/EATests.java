@@ -147,6 +147,7 @@ public class EATests extends TestScaffold {
         new EAMaterializeFloatArray()          .setScaffold(this).run();
         new EAMaterializeDoubleArray()         .setScaffold(this).run();
         new EAMaterializeObjectArray()         .setScaffold(this).run();
+        new EAMaterializeObjectWithConstantAndNotConstantValues().setScaffold(this).run();
 
         // resume the target listening for events
         listenUntilVMDisconnect();
@@ -341,6 +342,43 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
      Asserts.assertTrue(found);
      msg("OK.");
  }
+
+ protected ObjectReference getLocalRef(StackFrame frame, String expectedMethodName, String lType, String lName) throws Exception {
+     Asserts.assertEQ(expectedMethodName, frame.location().method().name());
+     List<LocalVariable> localVars = frame.visibleVariables();
+     msg("Get and check local variable " + lName + " in " + expectedMethodName);
+     ObjectReference lRef = null;
+     for (LocalVariable lv : localVars) {
+         if (lv.name().equals(lName)) {
+             Value lVal = frame.getValue(lv);
+             Asserts.assertNotNull(lVal);
+             Asserts.assertEQ(lVal.type().name(), lType);
+             lRef = (ObjectReference) lVal;
+         }
+     }
+     Asserts.assertNotNull(lRef, "Local variable " + lName + " not found");
+     msg("OK.");
+     return lRef;
+ }
+
+ protected void checkField(ObjectReference o, FD desc, String fName, Object expVal) throws Exception {
+     msg("check field " + fName);
+     ReferenceType rt = o.referenceType();
+     Field fld = rt.fieldByName(fName);
+     Value val = o.getValue(fld);
+     Object actVal = FD2getter.get(desc).apply((PrimitiveValue) val);
+     Asserts.assertEQ(actVal, expVal, "field " + fName + " has unexpected value.");
+     msg("ok");
+ }
+
+ protected void checkObjField(ObjectReference o, String type, String fName, Object expVal) throws Exception {
+     msg("check field " + fName);
+     ReferenceType rt = o.referenceType();
+     Field fld = rt.fieldByName(fName);
+     Value actVal = o.getValue(fld);
+     Asserts.assertEQ(actVal, expVal, "field " + fName + " has unexpected value.");
+     msg("ok");
+ }
 }
 
 //make sure a compiled frame is not deoptimized if an escaping local is accessed
@@ -422,6 +460,32 @@ class EAMaterializeObjectArray extends EATestCaseBaseDebugger {
  }
 }
 
+class EAMaterializeObjectWithConstantAndNotConstantValues extends EATestCaseBaseDebugger {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference o = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "ILFDO", "o");
+        checkField(o, FD.I, "i", 1);
+        checkField(o, FD.I, "i2", 2);
+        checkField(o, FD.J, "l", 1L);
+        checkField(o, FD.J, "l2", 2L);
+        checkField(o, FD.F, "f", 1.1f);
+        checkField(o, FD.F, "f2", 2.1f);
+        checkField(o, FD.D, "d", 1.1d);
+        checkField(o, FD.D, "d2", 2.1d);
+        ObjectReference[] expVals = getExpectedVals(bpe.thread().frame(1));
+        checkObjField(o, "java.lang.Long[]", "o", expVals[0]);
+        checkObjField(o, "java.lang.Long[]", "o2", expVals[1]);
+    }
+    
+    public ObjectReference[] getExpectedVals(StackFrame stackFrame) {
+        ObjectReference[] result = new ObjectReference[2];
+        ReferenceType clazz = stackFrame.location().declaringType();
+        result[0] = (ObjectReference) clazz.getValue(clazz.fieldByName("NOT_CONST_1_OBJ"));
+        result[1] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_2_OBJ"));
+        return result;
+    }
+   }
 
 /////////////////////////////////////////////////////////////////////////////
 // Target side, i.e. the program to be debugged.
@@ -438,6 +502,7 @@ class EATestsTarget {
         new EAMaterializeFloatArrayTarget()          .run();
         new EAMaterializeDoubleArrayTarget()         .run();
         new EAMaterializeObjectArrayTarget()         .run();
+        new EAMaterializeObjectWithConstantAndNotConstantValuesTarget().run();
     }
 
 }
@@ -577,6 +642,43 @@ class PointXY {
         this.x = x;
         this.y = y;
     }
+}
+
+class ILFDO {
+
+    public int i;
+    public int i2;
+    public long l;
+    public long l2;
+    public float f;
+    public float f2;
+    public double d;
+    public double d2;
+    public Long o;
+    public Long o2;
+
+    public ILFDO(int i,
+                 int i2,
+                 long l,
+                 long l2,
+                 float f,
+                 float f2,
+                 double d,
+                 double d2,
+                 Long o,
+                 Long o2) {
+        this.i = i;
+        this.i2 = i2;
+        this.l = l;
+        this.l2 = l2;
+        this.f = f;
+        this.f2 = f2;
+        this.d = d;
+        this.d2 = d2;
+        this.o = o;
+        this.o2 = o2;
+    }
+    
 }
 
 //make sure a compiled frame is not deoptimized if an escaping local is accessed
@@ -722,3 +824,25 @@ class EAMaterializeObjectArrayTarget extends EATestCaseBaseTarget {
 
 // End of test case collection
 //////////////////////////////////////////////////////////////////////
+
+// Materialize an object whose fields have constant and not constant values at
+// the point where the object is materialize.
+class EAMaterializeObjectWithConstantAndNotConstantValuesTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        ILFDO o = new ILFDO(NOT_CONST_1I, 2,
+                            NOT_CONST_1L, 2L,
+                            NOT_CONST_1F, 2.1F,
+                            NOT_CONST_1D, 2.1D,
+                            NOT_CONST_1_OBJ, CONST_2_OBJ
+                            );
+        dontinline_brkpt();
+        dResult =
+            o.i + o.i2 + o.l + o.l2 + o.f + o.f2 + o.d + o.d2 + o.o + o.o2;
+    }
+
+    @Override
+    public double getExpectedDResult() {
+        return NOT_CONST_1I + 2 + NOT_CONST_1L + 2L + NOT_CONST_1F + 2.1F + NOT_CONST_1D + 2.1D + NOT_CONST_1_OBJ + CONST_2_OBJ;
+    }
+}
