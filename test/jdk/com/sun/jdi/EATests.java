@@ -127,9 +127,9 @@ abstract class EATargetTestCaseBase implements Runnable {
 
     private boolean warmupDone;
 
-    public static Long oneO   = Long.valueOf(1);
-    public static Long twoO   = Long.valueOf(2);
-    public static Long threeO = Long.valueOf(3);
+    public static final Long oneO   = Long.valueOf(1);
+    public static final Long twoO   = Long.valueOf(2);
+    public static final Long threeO = Long.valueOf(3);
 
     public void run() {
         setUp();
