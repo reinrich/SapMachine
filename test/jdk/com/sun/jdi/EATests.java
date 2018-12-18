@@ -48,6 +48,7 @@
  */
 
 import java.lang.reflect.Array;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -92,24 +93,357 @@ Manual execution:
 
 // TODO: remove trace options like '-XX:+PrintCompilation -XX:+PrintInlining' to avoid deadlock as in https://bugs.openjdk.java.net/browse/JDK-8213902
 
-// Target program, i.e. the program to be debugged.
+// Shared base class for test cases for both, debugger and debuggee.
+class EATestCaseBaseShared {
+    // If the property is given, then just the test case it refers to is executed.
+    // Use it to diagnose test failures.
+    public static final String RUN_ONLY_TEST_CASE_PROPERTY = "test.jdk.com.sun.jdi.EATests.onlytestcase";
+    public static final String RUN_ONLY_TEST_CASE = System.getProperty(RUN_ONLY_TEST_CASE_PROPERTY);
+
+    public final String testCaseName;
+
+    public EATestCaseBaseShared() {
+        String clName = getClass().getName();
+        int tidx = clName.lastIndexOf("Target");
+        testCaseName = tidx > 0 ? clName.substring(0, tidx) : clName;
+    }
+
+    public boolean shouldSkip() {
+        return EATestCaseBaseShared.RUN_ONLY_TEST_CASE != null && !testCaseName.equals(EATestCaseBaseShared.RUN_ONLY_TEST_CASE);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Debugger Side
+/////////////////////////////////////////////////////////////////////////////
+
+public class EATests extends TestScaffold {
+
+    EATests(String args[]) {
+        super(args);
+    }
+
+    public static void main(String[] args) throws Exception {
+        if (EATestCaseBaseShared.RUN_ONLY_TEST_CASE != null) {
+            args = Arrays.copyOf(args, args.length + 1);
+            args[args.length - 1] = "-D" + EATestCaseBaseShared.RUN_ONLY_TEST_CASE_PROPERTY + "=" + EATestCaseBaseShared.RUN_ONLY_TEST_CASE;
+        }
+        new EATests(args).startTests();
+    }
+
+    // Execute known test cases
+    protected void runTests() throws Exception {
+        msg("EATestsTarget.RUN_ONLY_TEST_CASE=" + EATestCaseBaseShared.RUN_ONLY_TEST_CASE);
+
+        String targetProgName = EATestsTarget.class.getName();
+        msg("starting to main method in class " +  targetProgName);
+        startToMain(targetProgName);
+
+        new EAMaterializeLocalVariableUponGet().setScaffold(this).run();
+        new EAGetWithoutMaterialize()          .setScaffold(this).run();
+        new EAMaterializeLocalAtObjectReturn() .setScaffold(this).run();
+        new EAMaterializeIntArray()            .setScaffold(this).run();
+        new EAMaterializeLongArray()           .setScaffold(this).run();
+        new EAMaterializeFloatArray()          .setScaffold(this).run();
+        new EAMaterializeDoubleArray()         .setScaffold(this).run();
+        new EAMaterializeObjectArray()         .setScaffold(this).run();
+
+        // resume the target listening for events
+        listenUntilVMDisconnect();
+    }
+
+    // Print a Message
+    public void msg(String m) {
+        System.out.println();
+        System.out.println("###(Debugger) " + m);
+        System.out.println();
+    }
+
+    // Highlighted message.
+    public void msgHL(String m) {
+        System.out.println();
+        System.out.println();
+        System.out.println("##########################################################");
+        System.out.println("### " + m);
+        System.out.println("### ");
+        System.out.println();
+        System.out.println();
+    }
+}
+
+//Base class for debugger side of test cases.
+abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements Runnable {
+
+ protected EATests env;
+
+ private static final String targetTestCaseBase = EATestCaseBaseTarget.class.getName();
+
+ public abstract void runTestCase() throws Exception;
+
+ public void run() {
+     if (shouldSkip()) {
+         msg("skipping " + testCaseName);
+         return;
+     }
+     try {
+         msgHL("Executing test case " + getClass().getName());
+         env.testFailed = false;
+         resumeToWarmupDone();
+         runTestCase();
+         resumeToTestCaseDone();
+         checkPostConditions();
+     } catch (Exception e) {
+         Asserts.fail("Unexpected exception in test case " + getClass().getName(), e);
+     }
+ }
+
+ public void resumeToWarmupDone() {
+     msg("resuming to " + getTargetTestCaseBaseName() + ".warmupDone()V");
+     env.resumeTo(getTargetTestCaseBaseName(), "warmupDone", "()V");
+ }
+
+ public void resumeToTestCaseDone() {
+     env.resumeTo(getTargetTestCaseBaseName(), "testCaseDone", "()V");
+ }
+
+ public void checkPostConditions() throws Exception {
+     Asserts.assertFalse(env.getExceptionCaught(), "Uncaught exception in Debuggee");
+
+     String testName = getClass().getName();
+     if (!env.testFailed) {
+         env.println(testName  + ": passed");
+     } else {
+         throw new Exception(testName + ": failed");
+     }
+ }
+
+ public EATestCaseBaseDebugger setScaffold(EATests env) {
+     this.env = env;
+     return this;
+ }
+
+ public String getTargetTestCaseBaseName() {
+     return targetTestCaseBase;
+ }
+
+ public void printStack(BreakpointEvent bpe) throws Exception {
+     msg("Debuggee Stack:");
+     List<StackFrame> stack_frames = bpe.thread().frames();
+     int i = 0;
+     for (StackFrame ff : stack_frames) {
+         System.out.println("frame[" + i++ +"]: " + ff.location().method());
+     }
+ }
+
+ public void msg(String m) {
+     env.msg(m);
+ }
+
+ public void msgHL(String m) {
+     env.msgHL(m);
+ }
+
+ // retrieve and check scalar replaced object
+ public void checkLocalPointXYRef(StackFrame frame, String expectedMethodName, String lName) throws Exception {
+     String lType = "PointXY";
+     Asserts.assertEQ(expectedMethodName, frame.location().method().name());
+     List<LocalVariable> localVars = frame.visibleVariables();
+     msg("Check if the local variable " + lName + " in " + expectedMethodName + " has the expected value: ");
+     boolean found = false;
+     for (LocalVariable lv : localVars) {
+         if (lv.name().equals(lName)) {
+             found  = true;
+             Value lVal = frame.getValue(lv);
+             Asserts.assertNotNull(lVal);
+             Asserts.assertEQ(lVal.type().name(), lType);
+             ObjectReference lRef = (ObjectReference) lVal;
+             // now check the fields
+             ReferenceType rt = lRef.referenceType();
+             Field xFd = rt.fieldByName("x");
+             Value xVal = lRef.getValue(xFd);
+             Asserts.assertEQ(((PrimitiveValue)xVal).intValue(), 4);
+             Field yFd = rt.fieldByName("y");
+             Value yVal = lRef.getValue(yFd);
+             Asserts.assertEQ(((PrimitiveValue)yVal).intValue(), 2);
+         }
+     }
+     Asserts.assertTrue(found);
+     msg("OK.");
+ }
+
+ // See 4.3.2. Field Descriptors in The Java Virtual Machine Specification
+ // (https://docs.oracle.com/javase/specs/jvms/se11/html/jvms-4.html#jvms-4.3.2)
+ enum FD {
+     I, // int
+     J, // long
+     F, // float
+     D, // double
+ }
+
+
+ // Map field descriptor to jdi type string
+ public static final Map<FD, String> FD2JDIType = Map.of(FD.I, "int[]", FD.J, "long[]", FD.F, "float[]", FD.D, "double[]");
+
+ // Map field descriptor to PrimitiveValue getter
+ public static final Function<PrimitiveValue, Integer> v2I = PrimitiveValue::intValue;
+ public static final Function<PrimitiveValue, Long>    v2J = PrimitiveValue::longValue;
+ public static final Function<PrimitiveValue, Float>   v2F = PrimitiveValue::floatValue;
+ public static final Function<PrimitiveValue, Double>  v2D = PrimitiveValue::doubleValue;
+ Map<FD, Function<PrimitiveValue, ?>> FD2getter = Map.of(FD.I, v2I, FD.J, v2J, FD.F, v2F, FD.D, v2D);
+
+ protected void checkLocalPrimitiveArray(StackFrame frame, String expectedMethodName, String lName, FD desc, Object expVals) throws Exception {
+     String lType = FD2JDIType.get(desc);
+     Asserts.assertNotNull(lType, "jdi type not found");
+     Asserts.assertEQ(EATestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
+     List<LocalVariable> localVars = frame.visibleVariables();
+     msg("Check if the local array variable " + lName  + " in " + EATestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
+     boolean found = false;
+     for (LocalVariable lv : localVars) {
+         if (lv.name().equals(lName)) {
+             found  = true;
+             Value lVal = frame.getValue(lv);
+             Asserts.assertNotNull(lVal);
+             Asserts.assertEQ(lVal.type().name(), lType);
+             ArrayReference aRef = (ArrayReference) lVal;
+             Asserts.assertEQ(aRef.length(), 3);
+             // now check the elements
+             for (int i = 0; i < aRef.length(); i++) {
+                 Object actVal = FD2getter.get(desc).apply((PrimitiveValue)aRef.getValue(i));
+                 Object expVal = Array.get(expVals, i);
+                 Asserts.assertEQ(actVal, expVal , "checking element at index " + i);
+             }
+         }
+     }
+     Asserts.assertTrue(found);
+     msg("OK.");
+ }
+
+ protected void checkLocalObjectArray(StackFrame frame, String expectedMethodName, String lName, String lType, ObjectReference[] expVals) throws Exception {
+     Asserts.assertEQ(EATestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
+     List<LocalVariable> localVars = frame.visibleVariables();
+     msg("Check if the local array variable " + lName  + " in " + EATestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
+     boolean found = false;
+     for (LocalVariable lv : localVars) {
+         if (lv.name().equals(lName)) {
+             found  = true;
+             Value lVal = frame.getValue(lv);
+             Asserts.assertNotNull(lVal);
+             Asserts.assertEQ(lVal.type().name(), lType);
+             ArrayReference aRef = (ArrayReference) lVal;
+             Asserts.assertEQ(aRef.length(), 3);
+             // now check the elements
+             for (int i = 0; i < aRef.length(); i++) {
+                 ObjectReference actVal = (ObjectReference)aRef.getValue(i);
+                 Asserts.assertSame(actVal, expVals[i] , "checking element at index " + i);
+             }
+         }
+     }
+     Asserts.assertTrue(found);
+     msg("OK.");
+ }
+}
+
+//make sure a compiled frame is not deoptimized if an escaping local is accessed
+class EAGetWithoutMaterialize extends EATestCaseBaseDebugger {
+ public void runTestCase() throws Exception {
+     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+     printStack(bpe);
+     checkLocalPointXYRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "xy");
+ }
+}
+
+class EAMaterializeLocalVariableUponGet extends EATestCaseBaseDebugger {
+ public void runTestCase() throws Exception {
+     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+     printStack(bpe);
+     checkLocalPointXYRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "xy");
+ }
+}
+
+class EAMaterializeLocalAtObjectReturn extends EATestCaseBaseDebugger {
+ public void runTestCase() throws Exception {
+     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+     printStack(bpe);
+     checkLocalPointXYRef(bpe.thread().frame(2), EATestCaseBaseTarget.TESTMETHOD_NAME, "xy");
+ }
+}
+
+class EAMaterializeIntArray extends EATestCaseBaseDebugger {
+ public void runTestCase() throws Exception {
+     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+     printStack(bpe);
+     int[] expectedVals = {1, 2, 3};
+     checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.I, expectedVals);
+ }
+}
+
+class EAMaterializeLongArray extends EATestCaseBaseDebugger {
+ public void runTestCase() throws Exception {
+     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+     printStack(bpe);
+     long[] expectedVals = {1, 2, 3};
+     checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.J, expectedVals);
+ }
+}
+
+class EAMaterializeFloatArray extends EATestCaseBaseDebugger {
+ public void runTestCase() throws Exception {
+     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+     printStack(bpe);
+     float[] expectedVals = {1.1f, 2.2f, 3.3f};
+     checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.F, expectedVals);
+ }
+}
+
+class EAMaterializeDoubleArray extends EATestCaseBaseDebugger {
+ public void runTestCase() throws Exception {
+     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+     printStack(bpe);
+     double[] expectedVals = {1.1d, 2.2d, 3.3d};
+     checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.D, expectedVals);
+ }
+}
+
+class EAMaterializeObjectArray extends EATestCaseBaseDebugger {
+ public void runTestCase() throws Exception {
+     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+     printStack(bpe);
+     ObjectReference[] expectedVals = getExpectedVals(bpe.thread().frame(0));
+     checkLocalObjectArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", "java.lang.Long[]", expectedVals);
+ }
+
+ public ObjectReference[] getExpectedVals(StackFrame stackFrame) {
+     ObjectReference[] result = new ObjectReference[3];
+     ReferenceType clazz = stackFrame.location().declaringType();
+     result[0] = (ObjectReference) clazz.getValue(clazz.fieldByName("oneO"));
+     result[1] = (ObjectReference) clazz.getValue(clazz.fieldByName("twoO"));
+     result[2] = (ObjectReference) clazz.getValue(clazz.fieldByName("threeO"));
+     return result;
+ }
+}
+
+
+/////////////////////////////////////////////////////////////////////////////
+// Target side, i.e. the program to be debugged.
+/////////////////////////////////////////////////////////////////////////////
+
 class EATestsTarget {
 
     public static void main(String[] args) {
-        new EATargetMaterializeLocalVariableUponGet().run();
-        new EATargetGetWithoutMaterialize()          .run();
-        new EATargetMaterializeLocalAtObjectReturn() .run();
-        new EATargetMaterializeIntArray()            .run();
-        new EATargetMaterializeLongArray()           .run();
-        new EATargetMaterializeFloatArray()          .run();
-        new EATargetMaterializeDoubleArray()         .run();
-        new EATargetMaterializeObjectArray()         .run();
+        new EAMaterializeLocalVariableUponGetTarget().run();
+        new EAGetWithoutMaterializeTarget()          .run();
+        new EAMaterializeLocalAtObjectReturnTarget() .run();
+        new EAMaterializeIntArrayTarget()            .run();
+        new EAMaterializeLongArrayTarget()           .run();
+        new EAMaterializeFloatArrayTarget()          .run();
+        new EAMaterializeDoubleArrayTarget()         .run();
+        new EAMaterializeObjectArrayTarget()         .run();
     }
 
 }
 
 // Base class for debuggee side of test cases.
-abstract class EATargetTestCaseBase implements Runnable {
+abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runnable {
 
     public static final String TESTMETHOD_NAME = "dontinline_testMethod";
 
@@ -128,13 +462,19 @@ abstract class EATargetTestCaseBase implements Runnable {
 
     private boolean warmupDone;
 
+
     public static final Long oneO   = Long.valueOf(1);
     public static final Long twoO   = Long.valueOf(2);
     public static final Long threeO = Long.valueOf(3);
 
     public void run() {
+        msg("EATestsTarget.RUN_ONLY_TEST_CASE=" + EATestCaseBaseShared.RUN_ONLY_TEST_CASE);
+        if (shouldSkip()) {
+            msg("skipping " + testCaseName);
+            return;
+        }
         setUp();
-        msg(getName() + " is up and running.");
+        msg(testCaseName + " is up and running.");
         compileTestMethod();
         warmupDone();
         checkCompLevel();
@@ -154,24 +494,20 @@ abstract class EATargetTestCaseBase implements Runnable {
         // will set breakpoint here after warmup
         if (warmupDone) {
             if (testFrameShouldBeDeoptimized) {
-                Asserts.assertTrue(WB.isFrameDeoptimized(testMethodDepth+1), getName() + ": expected test method frame at depth " + testMethodDepth + " to be deoptimized");
+                Asserts.assertTrue(WB.isFrameDeoptimized(testMethodDepth+1), testCaseName + ": expected test method frame at depth " + testMethodDepth + " to be deoptimized");
             } else {
-                Asserts.assertFalse(WB.isFrameDeoptimized(testMethodDepth+1), getName() + ": expected test method frame at depth " + testMethodDepth + " not to be deoptimized");
+                Asserts.assertFalse(WB.isFrameDeoptimized(testMethodDepth+1), testCaseName + ": expected test method frame at depth " + testMethodDepth + " not to be deoptimized");
             }
         }
     }
 
-    public String getName() {
-        return getClass().getName();
-    }
-
     public void warmupDone() {
-        msg(getName() + " warmup done.");
+        msg(testCaseName + " warmup done.");
         warmupDone = true;
     }
 
     public void testCaseDone() {
-        msg(getName() + " done.");
+        msg(testCaseName + " done.");
     }
 
     public void compileTestMethod() {
@@ -222,7 +558,7 @@ abstract class EATargetTestCaseBase implements Runnable {
 
     public void msg(String m) {
         System.out.println();
-        System.out.println("### " + m);
+        System.out.println("###(Target) " + m);
         System.out.println();
     }
 }
@@ -239,7 +575,7 @@ class PointXY {
 }
 
 //make sure a compiled frame is not deoptimized if an escaping local is accessed
-class EATargetGetWithoutMaterialize extends EATargetTestCaseBase {
+class EAGetWithoutMaterializeTarget extends EATestCaseBaseTarget {
 
     public PointXY getAway;
 
@@ -262,7 +598,7 @@ class EATargetGetWithoutMaterialize extends EATargetTestCaseBase {
     }
 }
 
-class EATargetMaterializeLocalVariableUponGet extends EATargetTestCaseBase {
+class EAMaterializeLocalVariableUponGetTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(4, 2);
@@ -276,7 +612,7 @@ class EATargetMaterializeLocalVariableUponGet extends EATargetTestCaseBase {
     }
 }
 
-class EATargetMaterializeLocalAtObjectReturn extends EATargetTestCaseBase {
+class EAMaterializeLocalAtObjectReturnTarget extends EATestCaseBaseTarget {
     @Override
     public void setUp() {
         super.setUp();
@@ -303,7 +639,7 @@ class EATargetMaterializeLocalAtObjectReturn extends EATargetTestCaseBase {
     }
 }
 
-class EATargetMaterializeIntArray extends EATargetTestCaseBase {
+class EAMaterializeIntArrayTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         int nums[] = {1 , 2, 3};
@@ -317,7 +653,7 @@ class EATargetMaterializeIntArray extends EATargetTestCaseBase {
     }
 }
 
-class EATargetMaterializeLongArray extends EATargetTestCaseBase {
+class EAMaterializeLongArrayTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         long nums[] = {1 , 2, 3};
@@ -331,7 +667,7 @@ class EATargetMaterializeLongArray extends EATargetTestCaseBase {
     }
 }
 
-class EATargetMaterializeFloatArray extends EATargetTestCaseBase {
+class EAMaterializeFloatArrayTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         float nums[] = {1.1f , 2.2f, 3.3f};
@@ -345,7 +681,7 @@ class EATargetMaterializeFloatArray extends EATargetTestCaseBase {
     }
 }
 
-class EATargetMaterializeDoubleArray extends EATargetTestCaseBase {
+class EAMaterializeDoubleArrayTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         double nums[] = {1.1d , 2.2d, 3.3d};
@@ -359,7 +695,7 @@ class EATargetMaterializeDoubleArray extends EATargetTestCaseBase {
     }
 }
 
-class EATargetMaterializeObjectArray extends EATargetTestCaseBase {
+class EAMaterializeObjectArrayTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         Long nums[] = {oneO , twoO, threeO};
@@ -370,301 +706,5 @@ class EATargetMaterializeObjectArray extends EATargetTestCaseBase {
     @Override
     public long getExpectedLResult() {
         return 1 + 2 + 3;
-    }
-}
-
-
-//Base class for debugger side of test cases.
-abstract class EATestCaseBase implements Runnable {
-
-    protected EATests env;
-
-    private static final String targetTestCaseBase = EATargetTestCaseBase.class.getName();
-
-    public abstract void runTestCase() throws Exception;
-
-    public void run() {
-        try {
-            msgHL("Executing test case " + getClass().getName());
-            env.testFailed = false;
-            resumeToWarmupDone();
-            runTestCase();
-            resumeToTestCaseDone();
-            checkPostConditions();
-        } catch (Exception e) {
-            Asserts.fail("Unexpected exception in test case " + getClass().getName(), e);
-        }
-    }
-
-    public void resumeToWarmupDone() {
-        msg("resuming to " + getTargetTestCaseBaseName() + ".warmupDone()V");
-        env.resumeTo(getTargetTestCaseBaseName(), "warmupDone", "()V");
-    }
-
-    public void resumeToTestCaseDone() {
-        env.resumeTo(getTargetTestCaseBaseName(), "testCaseDone", "()V");
-    }
-
-    public void checkPostConditions() throws Exception {
-        Asserts.assertFalse(env.getExceptionCaught(), "Uncaught exception in Debuggee");
-
-        String testName = getClass().getName();
-        if (!env.testFailed) {
-            env.println(testName  + ": passed");
-        } else {
-            throw new Exception(testName + ": failed");
-        }
-    }
-
-    public EATestCaseBase setScaffold(EATests env) {
-        this.env = env;
-        return this;
-    }
-
-    public String getTargetTestCaseBaseName() {
-        return targetTestCaseBase;
-    }
-
-    public void printStack(BreakpointEvent bpe) throws Exception {
-        msg("Debuggee Stack:");
-        List<StackFrame> stack_frames = bpe.thread().frames();
-        int i = 0;
-        for (StackFrame ff : stack_frames) {
-            System.out.println("frame[" + i++ +"]: " + ff.location().method());
-        }
-    }
-
-    public void msg(String m) {
-        env.msg(m);
-    }
-
-    public void msgHL(String m) {
-        env.msgHL(m);
-    }
-
-    // retrieve and check scalar replaced object
-    public void checkLocalPointXYRef(StackFrame frame, String expectedMethodName, String lName) throws Exception {
-        String lType = "PointXY";
-        Asserts.assertEQ(expectedMethodName, frame.location().method().name());
-        List<LocalVariable> localVars = frame.visibleVariables();
-        msg("Check if the local variable " + lName + " in " + expectedMethodName + " has the expected value: ");
-        boolean found = false;
-        for (LocalVariable lv : localVars) {
-            if (lv.name().equals(lName)) {
-                found  = true;
-                Value lVal = frame.getValue(lv);
-                Asserts.assertNotNull(lVal);
-                Asserts.assertEQ(lVal.type().name(), lType);
-                ObjectReference lRef = (ObjectReference) lVal;
-                // now check the fields
-                ReferenceType rt = lRef.referenceType();
-                Field xFd = rt.fieldByName("x");
-                Value xVal = lRef.getValue(xFd);
-                Asserts.assertEQ(((PrimitiveValue)xVal).intValue(), 4);
-                Field yFd = rt.fieldByName("y");
-                Value yVal = lRef.getValue(yFd);
-                Asserts.assertEQ(((PrimitiveValue)yVal).intValue(), 2);
-            }
-        }
-        Asserts.assertTrue(found);
-        msg("OK.");
-    }
-
-    // See 4.3.2. Field Descriptors in The Java Virtual Machine Specification
-    // (https://docs.oracle.com/javase/specs/jvms/se11/html/jvms-4.html#jvms-4.3.2)
-    enum FD {
-        I, // int
-        J, // long
-        F, // float
-        D, // double
-    }
-
-
-    // Map field descriptor to jdi type string
-    public static final Map<FD, String> FD2JDIType = Map.of(FD.I, "int[]", FD.J, "long[]", FD.F, "float[]", FD.D, "double[]");
-
-    // Map field descriptor to PrimitiveValue getter
-    public static final Function<PrimitiveValue, Integer> v2I = PrimitiveValue::intValue;
-    public static final Function<PrimitiveValue, Long>    v2J = PrimitiveValue::longValue;
-    public static final Function<PrimitiveValue, Float>   v2F = PrimitiveValue::floatValue;
-    public static final Function<PrimitiveValue, Double>  v2D = PrimitiveValue::doubleValue;
-    Map<FD, Function<PrimitiveValue, ?>> FD2getter = Map.of(FD.I, v2I, FD.J, v2J, FD.F, v2F, FD.D, v2D);
-
-    protected void checkLocalPrimitiveArray(StackFrame frame, String expectedMethodName, String lName, FD desc, Object expVals) throws Exception {
-        String lType = FD2JDIType.get(desc);
-        Asserts.assertNotNull(lType, "jdi type not found");
-        Asserts.assertEQ(EATargetTestCaseBase.TESTMETHOD_NAME, frame .location().method().name());
-        List<LocalVariable> localVars = frame.visibleVariables();
-        msg("Check if the local array variable " + lName  + " in " + EATargetTestCaseBase.TESTMETHOD_NAME + " has the expected elements: ");
-        boolean found = false;
-        for (LocalVariable lv : localVars) {
-            if (lv.name().equals(lName)) {
-                found  = true;
-                Value lVal = frame.getValue(lv);
-                Asserts.assertNotNull(lVal);
-                Asserts.assertEQ(lVal.type().name(), lType);
-                ArrayReference aRef = (ArrayReference) lVal;
-                Asserts.assertEQ(aRef.length(), 3);
-                // now check the elements
-                for (int i = 0; i < aRef.length(); i++) {
-                    Object actVal = FD2getter.get(desc).apply((PrimitiveValue)aRef.getValue(i));
-                    Object expVal = Array.get(expVals, i);
-                    Asserts.assertEQ(actVal, expVal , "checking element at index " + i);
-                }
-            }
-        }
-        Asserts.assertTrue(found);
-        msg("OK.");
-    }
-
-    protected void checkLocalObjectArray(StackFrame frame, String expectedMethodName, String lName, String lType, ObjectReference[] expVals) throws Exception {
-        Asserts.assertEQ(EATargetTestCaseBase.TESTMETHOD_NAME, frame .location().method().name());
-        List<LocalVariable> localVars = frame.visibleVariables();
-        msg("Check if the local array variable " + lName  + " in " + EATargetTestCaseBase.TESTMETHOD_NAME + " has the expected elements: ");
-        boolean found = false;
-        for (LocalVariable lv : localVars) {
-            if (lv.name().equals(lName)) {
-                found  = true;
-                Value lVal = frame.getValue(lv);
-                Asserts.assertNotNull(lVal);
-                Asserts.assertEQ(lVal.type().name(), lType);
-                ArrayReference aRef = (ArrayReference) lVal;
-                Asserts.assertEQ(aRef.length(), 3);
-                // now check the elements
-                for (int i = 0; i < aRef.length(); i++) {
-                    ObjectReference actVal = (ObjectReference)aRef.getValue(i);
-                    Asserts.assertSame(actVal, expVals[i] , "checking element at index " + i);
-                }
-            }
-        }
-        Asserts.assertTrue(found);
-        msg("OK.");
-    }
-}
-
-// make sure a compiled frame is not deoptimized if an escaping local is accessed
-class EAGetWithoutMaterialize extends EATestCaseBase {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        checkLocalPointXYRef(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "xy");
-    }
-}
-
-class EAMaterializeLocalVariableUponGet extends EATestCaseBase {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        checkLocalPointXYRef(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "xy");
-    }
-}
-
-class EAMaterializeLocalAtObjectReturn extends EATestCaseBase {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        checkLocalPointXYRef(bpe.thread().frame(2), EATargetTestCaseBase.TESTMETHOD_NAME, "xy");
-    }
-}
-
-class EAMaterializeIntArray extends EATestCaseBase {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        int[] expectedVals = {1, 2, 3};
-        checkLocalPrimitiveArray(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "nums", FD.I, expectedVals);
-    }
-}
-
-class EAMaterializeLongArray extends EATestCaseBase {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        long[] expectedVals = {1, 2, 3};
-        checkLocalPrimitiveArray(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "nums", FD.J, expectedVals);
-    }
-}
-
-class EAMaterializeFloatArray extends EATestCaseBase {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        float[] expectedVals = {1.1f, 2.2f, 3.3f};
-        checkLocalPrimitiveArray(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "nums", FD.F, expectedVals);
-    }
-}
-
-class EAMaterializeDoubleArray extends EATestCaseBase {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        double[] expectedVals = {1.1d, 2.2d, 3.3d};
-        checkLocalPrimitiveArray(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "nums", FD.D, expectedVals);
-    }
-}
-
-class EAMaterializeObjectArray extends EATestCaseBase {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        ObjectReference[] expectedVals = getExpectedVals(bpe.thread().frame(0));
-        checkLocalObjectArray(bpe.thread().frame(1), EATargetTestCaseBase.TESTMETHOD_NAME, "nums", "java.lang.Long[]", expectedVals);
-    }
-
-    public ObjectReference[] getExpectedVals(StackFrame stackFrame) {
-        ObjectReference[] result = new ObjectReference[3];
-        ReferenceType clazz = stackFrame.location().declaringType();
-        result[0] = (ObjectReference) clazz.getValue(clazz.fieldByName("oneO"));
-        result[1] = (ObjectReference) clazz.getValue(clazz.fieldByName("twoO"));
-        result[2] = (ObjectReference) clazz.getValue(clazz.fieldByName("threeO"));
-        return result;
-    }
-}
-
-public class EATests extends TestScaffold {
-
-    EATests(String args[]) {
-        super(args);
-    }
-
-    public static void main(String[] args) throws Exception {
-        new EATests(args).startTests();
-    }
-
-    // Execute known test cases
-    protected void runTests() throws Exception {
-        String targetProgName = EATestsTarget.class.getName();
-        msg("starting to main method in class " +  targetProgName);
-        startToMain(targetProgName);
-
-        new EAMaterializeLocalVariableUponGet().setScaffold(this).run();
-        new EAGetWithoutMaterialize()          .setScaffold(this).run();
-        new EAMaterializeLocalAtObjectReturn() .setScaffold(this).run();
-        new EAMaterializeIntArray()            .setScaffold(this).run();
-        new EAMaterializeLongArray()           .setScaffold(this).run();
-        new EAMaterializeFloatArray()          .setScaffold(this).run();
-        new EAMaterializeDoubleArray()         .setScaffold(this).run();
-        new EAMaterializeObjectArray()         .setScaffold(this).run();
-
-        // resume the target listening for events
-        listenUntilVMDisconnect();
-    }
-
-    // Print a Message
-    public void msg(String m) {
-        System.out.println();
-        System.out.println("### " + m);
-        System.out.println();
-    }
-
-    // Highlighted message.
-    public void msgHL(String m) {
-        System.out.println();
-        System.out.println();
-        System.out.println("##########################################################");
-        System.out.println("### " + m);
-        System.out.println("### ");
-        System.out.println();
-        System.out.println();
     }
 }
