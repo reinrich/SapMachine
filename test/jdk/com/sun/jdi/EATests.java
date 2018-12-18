@@ -244,34 +244,6 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         env.msgHL(m);
     }
 
-    // retrieve and check scalar replaced object
-    public void checkLocalPointXYRef(StackFrame frame, String expectedMethodName, String lName) throws Exception {
-        String lType = "PointXY";
-        Asserts.assertEQ(expectedMethodName, frame.location().method().name());
-        List<LocalVariable> localVars = frame.visibleVariables();
-        msg("Check if the local variable " + lName + " in " + expectedMethodName + " has the expected value: ");
-        boolean found = false;
-        for (LocalVariable lv : localVars) {
-            if (lv.name().equals(lName)) {
-                found  = true;
-                Value lVal = frame.getValue(lv);
-                Asserts.assertNotNull(lVal);
-                Asserts.assertEQ(lVal.type().name(), lType);
-                ObjectReference lRef = (ObjectReference) lVal;
-                // now check the fields
-                ReferenceType rt = lRef.referenceType();
-                Field xFd = rt.fieldByName("x");
-                Value xVal = lRef.getValue(xFd);
-                Asserts.assertEQ(((PrimitiveValue)xVal).intValue(), 4);
-                Field yFd = rt.fieldByName("y");
-                Value yVal = lRef.getValue(yFd);
-                Asserts.assertEQ(((PrimitiveValue)yVal).intValue(), 2);
-            }
-        }
-        Asserts.assertTrue(found);
-        msg("OK.");
-    }
-
     // See 4.3.2. Field Descriptors in The Java Virtual Machine Specification
     // (https://docs.oracle.com/javase/specs/jvms/se11/html/jvms-4.html#jvms-4.3.2)
     enum FD {
@@ -386,7 +358,9 @@ class EAGetWithoutMaterialize extends EATestCaseBaseDebugger {
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
-        checkLocalPointXYRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "xy");
+        ObjectReference o = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
+        checkField(o, FD.I, "x", 4);
+        checkField(o, FD.I, "y", 2);
     }
 }
 
@@ -394,7 +368,9 @@ class EAMaterializeLocalVariableUponGet extends EATestCaseBaseDebugger {
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
-        checkLocalPointXYRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "xy");
+        ObjectReference o = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
+        checkField(o, FD.I, "x", 4);
+        checkField(o, FD.I, "y", 2);
     }
 }
 
@@ -402,7 +378,9 @@ class EAMaterializeLocalAtObjectReturn extends EATestCaseBaseDebugger {
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
-        checkLocalPointXYRef(bpe.thread().frame(2), EATestCaseBaseTarget.TESTMETHOD_NAME, "xy");
+        ObjectReference o = getLocalRef(bpe.thread().frame(2), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
+        checkField(o, FD.I, "x", 4);
+        checkField(o, FD.I, "y", 2);
     }
 }
 
