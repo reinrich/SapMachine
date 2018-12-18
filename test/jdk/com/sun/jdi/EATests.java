@@ -623,7 +623,7 @@ class EAMaterializeObjectArray extends EATestCaseBase {
 
 public class EATests extends TestScaffold {
 
-    EATests (String args[]) {
+    EATests(String args[]) {
         super(args);
     }
 
