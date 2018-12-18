@@ -175,289 +175,289 @@ public class EATests extends TestScaffold {
 //Base class for debugger side of test cases.
 abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements Runnable {
 
- protected EATests env;
+    protected EATests env;
 
- private static final String targetTestCaseBase = EATestCaseBaseTarget.class.getName();
+    private static final String targetTestCaseBase = EATestCaseBaseTarget.class.getName();
 
- public abstract void runTestCase() throws Exception;
+    public abstract void runTestCase() throws Exception;
 
- public void run() {
-     if (shouldSkip()) {
-         msg("skipping " + testCaseName);
-         return;
-     }
-     try {
-         msgHL("Executing test case " + getClass().getName());
-         env.testFailed = false;
-         resumeToWarmupDone();
-         runTestCase();
-         resumeToTestCaseDone();
-         checkPostConditions();
-     } catch (Exception e) {
-         Asserts.fail("Unexpected exception in test case " + getClass().getName(), e);
-     }
- }
+    public void run() {
+        if (shouldSkip()) {
+            msg("skipping " + testCaseName);
+            return;
+        }
+        try {
+            msgHL("Executing test case " + getClass().getName());
+            env.testFailed = false;
+            resumeToWarmupDone();
+            runTestCase();
+            resumeToTestCaseDone();
+            checkPostConditions();
+        } catch (Exception e) {
+            Asserts.fail("Unexpected exception in test case " + getClass().getName(), e);
+        }
+    }
 
- public void resumeToWarmupDone() {
-     msg("resuming to " + getTargetTestCaseBaseName() + ".warmupDone()V");
-     env.resumeTo(getTargetTestCaseBaseName(), "warmupDone", "()V");
- }
+    public void resumeToWarmupDone() {
+        msg("resuming to " + getTargetTestCaseBaseName() + ".warmupDone()V");
+        env.resumeTo(getTargetTestCaseBaseName(), "warmupDone", "()V");
+    }
 
- public void resumeToTestCaseDone() {
-     env.resumeTo(getTargetTestCaseBaseName(), "testCaseDone", "()V");
- }
+    public void resumeToTestCaseDone() {
+        env.resumeTo(getTargetTestCaseBaseName(), "testCaseDone", "()V");
+    }
 
- public void checkPostConditions() throws Exception {
-     Asserts.assertFalse(env.getExceptionCaught(), "Uncaught exception in Debuggee");
+    public void checkPostConditions() throws Exception {
+        Asserts.assertFalse(env.getExceptionCaught(), "Uncaught exception in Debuggee");
 
-     String testName = getClass().getName();
-     if (!env.testFailed) {
-         env.println(testName  + ": passed");
-     } else {
-         throw new Exception(testName + ": failed");
-     }
- }
+        String testName = getClass().getName();
+        if (!env.testFailed) {
+            env.println(testName  + ": passed");
+        } else {
+            throw new Exception(testName + ": failed");
+        }
+    }
 
- public EATestCaseBaseDebugger setScaffold(EATests env) {
-     this.env = env;
-     return this;
- }
+    public EATestCaseBaseDebugger setScaffold(EATests env) {
+        this.env = env;
+        return this;
+    }
 
- public String getTargetTestCaseBaseName() {
-     return targetTestCaseBase;
- }
+    public String getTargetTestCaseBaseName() {
+        return targetTestCaseBase;
+    }
 
- public void printStack(BreakpointEvent bpe) throws Exception {
-     msg("Debuggee Stack:");
-     List<StackFrame> stack_frames = bpe.thread().frames();
-     int i = 0;
-     for (StackFrame ff : stack_frames) {
-         System.out.println("frame[" + i++ +"]: " + ff.location().method());
-     }
- }
+    public void printStack(BreakpointEvent bpe) throws Exception {
+        msg("Debuggee Stack:");
+        List<StackFrame> stack_frames = bpe.thread().frames();
+        int i = 0;
+        for (StackFrame ff : stack_frames) {
+            System.out.println("frame[" + i++ +"]: " + ff.location().method());
+        }
+    }
 
- public void msg(String m) {
-     env.msg(m);
- }
+    public void msg(String m) {
+        env.msg(m);
+    }
 
- public void msgHL(String m) {
-     env.msgHL(m);
- }
+    public void msgHL(String m) {
+        env.msgHL(m);
+    }
 
- // retrieve and check scalar replaced object
- public void checkLocalPointXYRef(StackFrame frame, String expectedMethodName, String lName) throws Exception {
-     String lType = "PointXY";
-     Asserts.assertEQ(expectedMethodName, frame.location().method().name());
-     List<LocalVariable> localVars = frame.visibleVariables();
-     msg("Check if the local variable " + lName + " in " + expectedMethodName + " has the expected value: ");
-     boolean found = false;
-     for (LocalVariable lv : localVars) {
-         if (lv.name().equals(lName)) {
-             found  = true;
-             Value lVal = frame.getValue(lv);
-             Asserts.assertNotNull(lVal);
-             Asserts.assertEQ(lVal.type().name(), lType);
-             ObjectReference lRef = (ObjectReference) lVal;
-             // now check the fields
-             ReferenceType rt = lRef.referenceType();
-             Field xFd = rt.fieldByName("x");
-             Value xVal = lRef.getValue(xFd);
-             Asserts.assertEQ(((PrimitiveValue)xVal).intValue(), 4);
-             Field yFd = rt.fieldByName("y");
-             Value yVal = lRef.getValue(yFd);
-             Asserts.assertEQ(((PrimitiveValue)yVal).intValue(), 2);
-         }
-     }
-     Asserts.assertTrue(found);
-     msg("OK.");
- }
+    // retrieve and check scalar replaced object
+    public void checkLocalPointXYRef(StackFrame frame, String expectedMethodName, String lName) throws Exception {
+        String lType = "PointXY";
+        Asserts.assertEQ(expectedMethodName, frame.location().method().name());
+        List<LocalVariable> localVars = frame.visibleVariables();
+        msg("Check if the local variable " + lName + " in " + expectedMethodName + " has the expected value: ");
+        boolean found = false;
+        for (LocalVariable lv : localVars) {
+            if (lv.name().equals(lName)) {
+                found  = true;
+                Value lVal = frame.getValue(lv);
+                Asserts.assertNotNull(lVal);
+                Asserts.assertEQ(lVal.type().name(), lType);
+                ObjectReference lRef = (ObjectReference) lVal;
+                // now check the fields
+                ReferenceType rt = lRef.referenceType();
+                Field xFd = rt.fieldByName("x");
+                Value xVal = lRef.getValue(xFd);
+                Asserts.assertEQ(((PrimitiveValue)xVal).intValue(), 4);
+                Field yFd = rt.fieldByName("y");
+                Value yVal = lRef.getValue(yFd);
+                Asserts.assertEQ(((PrimitiveValue)yVal).intValue(), 2);
+            }
+        }
+        Asserts.assertTrue(found);
+        msg("OK.");
+    }
 
- // See 4.3.2. Field Descriptors in The Java Virtual Machine Specification
- // (https://docs.oracle.com/javase/specs/jvms/se11/html/jvms-4.html#jvms-4.3.2)
- enum FD {
-     I, // int
-     J, // long
-     F, // float
-     D, // double
- }
+    // See 4.3.2. Field Descriptors in The Java Virtual Machine Specification
+    // (https://docs.oracle.com/javase/specs/jvms/se11/html/jvms-4.html#jvms-4.3.2)
+    enum FD {
+        I, // int
+        J, // long
+        F, // float
+        D, // double
+    }
 
 
- // Map field descriptor to jdi type string
- public static final Map<FD, String> FD2JDIType = Map.of(FD.I, "int[]", FD.J, "long[]", FD.F, "float[]", FD.D, "double[]");
+    // Map field descriptor to jdi type string
+    public static final Map<FD, String> FD2JDIType = Map.of(FD.I, "int[]", FD.J, "long[]", FD.F, "float[]", FD.D, "double[]");
 
- // Map field descriptor to PrimitiveValue getter
- public static final Function<PrimitiveValue, Integer> v2I = PrimitiveValue::intValue;
- public static final Function<PrimitiveValue, Long>    v2J = PrimitiveValue::longValue;
- public static final Function<PrimitiveValue, Float>   v2F = PrimitiveValue::floatValue;
- public static final Function<PrimitiveValue, Double>  v2D = PrimitiveValue::doubleValue;
- Map<FD, Function<PrimitiveValue, ?>> FD2getter = Map.of(FD.I, v2I, FD.J, v2J, FD.F, v2F, FD.D, v2D);
+    // Map field descriptor to PrimitiveValue getter
+    public static final Function<PrimitiveValue, Integer> v2I = PrimitiveValue::intValue;
+    public static final Function<PrimitiveValue, Long>    v2J = PrimitiveValue::longValue;
+    public static final Function<PrimitiveValue, Float>   v2F = PrimitiveValue::floatValue;
+    public static final Function<PrimitiveValue, Double>  v2D = PrimitiveValue::doubleValue;
+    Map<FD, Function<PrimitiveValue, ?>> FD2getter = Map.of(FD.I, v2I, FD.J, v2J, FD.F, v2F, FD.D, v2D);
 
- protected void checkLocalPrimitiveArray(StackFrame frame, String expectedMethodName, String lName, FD desc, Object expVals) throws Exception {
-     String lType = FD2JDIType.get(desc);
-     Asserts.assertNotNull(lType, "jdi type not found");
-     Asserts.assertEQ(EATestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
-     List<LocalVariable> localVars = frame.visibleVariables();
-     msg("Check if the local array variable " + lName  + " in " + EATestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
-     boolean found = false;
-     for (LocalVariable lv : localVars) {
-         if (lv.name().equals(lName)) {
-             found  = true;
-             Value lVal = frame.getValue(lv);
-             Asserts.assertNotNull(lVal);
-             Asserts.assertEQ(lVal.type().name(), lType);
-             ArrayReference aRef = (ArrayReference) lVal;
-             Asserts.assertEQ(aRef.length(), 3);
-             // now check the elements
-             for (int i = 0; i < aRef.length(); i++) {
-                 Object actVal = FD2getter.get(desc).apply((PrimitiveValue)aRef.getValue(i));
-                 Object expVal = Array.get(expVals, i);
-                 Asserts.assertEQ(actVal, expVal , "checking element at index " + i);
-             }
-         }
-     }
-     Asserts.assertTrue(found);
-     msg("OK.");
- }
+    protected void checkLocalPrimitiveArray(StackFrame frame, String expectedMethodName, String lName, FD desc, Object expVals) throws Exception {
+        String lType = FD2JDIType.get(desc);
+        Asserts.assertNotNull(lType, "jdi type not found");
+        Asserts.assertEQ(EATestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
+        List<LocalVariable> localVars = frame.visibleVariables();
+        msg("Check if the local array variable " + lName  + " in " + EATestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
+        boolean found = false;
+        for (LocalVariable lv : localVars) {
+            if (lv.name().equals(lName)) {
+                found  = true;
+                Value lVal = frame.getValue(lv);
+                Asserts.assertNotNull(lVal);
+                Asserts.assertEQ(lVal.type().name(), lType);
+                ArrayReference aRef = (ArrayReference) lVal;
+                Asserts.assertEQ(aRef.length(), 3);
+                // now check the elements
+                for (int i = 0; i < aRef.length(); i++) {
+                    Object actVal = FD2getter.get(desc).apply((PrimitiveValue)aRef.getValue(i));
+                    Object expVal = Array.get(expVals, i);
+                    Asserts.assertEQ(actVal, expVal , "checking element at index " + i);
+                }
+            }
+        }
+        Asserts.assertTrue(found);
+        msg("OK.");
+    }
 
- protected void checkLocalObjectArray(StackFrame frame, String expectedMethodName, String lName, String lType, ObjectReference[] expVals) throws Exception {
-     Asserts.assertEQ(EATestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
-     List<LocalVariable> localVars = frame.visibleVariables();
-     msg("Check if the local array variable " + lName  + " in " + EATestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
-     boolean found = false;
-     for (LocalVariable lv : localVars) {
-         if (lv.name().equals(lName)) {
-             found  = true;
-             Value lVal = frame.getValue(lv);
-             Asserts.assertNotNull(lVal);
-             Asserts.assertEQ(lVal.type().name(), lType);
-             ArrayReference aRef = (ArrayReference) lVal;
-             Asserts.assertEQ(aRef.length(), 3);
-             // now check the elements
-             for (int i = 0; i < aRef.length(); i++) {
-                 ObjectReference actVal = (ObjectReference)aRef.getValue(i);
-                 Asserts.assertSame(actVal, expVals[i] , "checking element at index " + i);
-             }
-         }
-     }
-     Asserts.assertTrue(found);
-     msg("OK.");
- }
+    protected void checkLocalObjectArray(StackFrame frame, String expectedMethodName, String lName, String lType, ObjectReference[] expVals) throws Exception {
+        Asserts.assertEQ(EATestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
+        List<LocalVariable> localVars = frame.visibleVariables();
+        msg("Check if the local array variable " + lName  + " in " + EATestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
+        boolean found = false;
+        for (LocalVariable lv : localVars) {
+            if (lv.name().equals(lName)) {
+                found  = true;
+                Value lVal = frame.getValue(lv);
+                Asserts.assertNotNull(lVal);
+                Asserts.assertEQ(lVal.type().name(), lType);
+                ArrayReference aRef = (ArrayReference) lVal;
+                Asserts.assertEQ(aRef.length(), 3);
+                // now check the elements
+                for (int i = 0; i < aRef.length(); i++) {
+                    ObjectReference actVal = (ObjectReference)aRef.getValue(i);
+                    Asserts.assertSame(actVal, expVals[i] , "checking element at index " + i);
+                }
+            }
+        }
+        Asserts.assertTrue(found);
+        msg("OK.");
+    }
 
- protected ObjectReference getLocalRef(StackFrame frame, String expectedMethodName, String lType, String lName) throws Exception {
-     Asserts.assertEQ(expectedMethodName, frame.location().method().name());
-     List<LocalVariable> localVars = frame.visibleVariables();
-     msg("Get and check local variable " + lName + " in " + expectedMethodName);
-     ObjectReference lRef = null;
-     for (LocalVariable lv : localVars) {
-         if (lv.name().equals(lName)) {
-             Value lVal = frame.getValue(lv);
-             Asserts.assertNotNull(lVal);
-             Asserts.assertEQ(lVal.type().name(), lType);
-             lRef = (ObjectReference) lVal;
-         }
-     }
-     Asserts.assertNotNull(lRef, "Local variable " + lName + " not found");
-     msg("OK.");
-     return lRef;
- }
+    protected ObjectReference getLocalRef(StackFrame frame, String expectedMethodName, String lType, String lName) throws Exception {
+        Asserts.assertEQ(expectedMethodName, frame.location().method().name());
+        List<LocalVariable> localVars = frame.visibleVariables();
+        msg("Get and check local variable " + lName + " in " + expectedMethodName);
+        ObjectReference lRef = null;
+        for (LocalVariable lv : localVars) {
+            if (lv.name().equals(lName)) {
+                Value lVal = frame.getValue(lv);
+                Asserts.assertNotNull(lVal);
+                Asserts.assertEQ(lVal.type().name(), lType);
+                lRef = (ObjectReference) lVal;
+            }
+        }
+        Asserts.assertNotNull(lRef, "Local variable " + lName + " not found");
+        msg("OK.");
+        return lRef;
+    }
 
- protected void checkField(ObjectReference o, FD desc, String fName, Object expVal) throws Exception {
-     msg("check field " + fName);
-     ReferenceType rt = o.referenceType();
-     Field fld = rt.fieldByName(fName);
-     Value val = o.getValue(fld);
-     Object actVal = FD2getter.get(desc).apply((PrimitiveValue) val);
-     Asserts.assertEQ(actVal, expVal, "field " + fName + " has unexpected value.");
-     msg("ok");
- }
+    protected void checkField(ObjectReference o, FD desc, String fName, Object expVal) throws Exception {
+        msg("check field " + fName);
+        ReferenceType rt = o.referenceType();
+        Field fld = rt.fieldByName(fName);
+        Value val = o.getValue(fld);
+        Object actVal = FD2getter.get(desc).apply((PrimitiveValue) val);
+        Asserts.assertEQ(actVal, expVal, "field " + fName + " has unexpected value.");
+        msg("ok");
+    }
 
- protected void checkObjField(ObjectReference o, String type, String fName, Object expVal) throws Exception {
-     msg("check field " + fName);
-     ReferenceType rt = o.referenceType();
-     Field fld = rt.fieldByName(fName);
-     Value actVal = o.getValue(fld);
-     Asserts.assertEQ(actVal, expVal, "field " + fName + " has unexpected value.");
-     msg("ok");
- }
+    protected void checkObjField(ObjectReference o, String type, String fName, Object expVal) throws Exception {
+        msg("check field " + fName);
+        ReferenceType rt = o.referenceType();
+        Field fld = rt.fieldByName(fName);
+        Value actVal = o.getValue(fld);
+        Asserts.assertEQ(actVal, expVal, "field " + fName + " has unexpected value.");
+        msg("ok");
+    }
 }
 
 //make sure a compiled frame is not deoptimized if an escaping local is accessed
 class EAGetWithoutMaterialize extends EATestCaseBaseDebugger {
- public void runTestCase() throws Exception {
-     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-     printStack(bpe);
-     checkLocalPointXYRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "xy");
- }
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        checkLocalPointXYRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "xy");
+    }
 }
 
 class EAMaterializeLocalVariableUponGet extends EATestCaseBaseDebugger {
- public void runTestCase() throws Exception {
-     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-     printStack(bpe);
-     checkLocalPointXYRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "xy");
- }
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        checkLocalPointXYRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "xy");
+    }
 }
 
 class EAMaterializeLocalAtObjectReturn extends EATestCaseBaseDebugger {
- public void runTestCase() throws Exception {
-     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-     printStack(bpe);
-     checkLocalPointXYRef(bpe.thread().frame(2), EATestCaseBaseTarget.TESTMETHOD_NAME, "xy");
- }
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        checkLocalPointXYRef(bpe.thread().frame(2), EATestCaseBaseTarget.TESTMETHOD_NAME, "xy");
+    }
 }
 
 class EAMaterializeIntArray extends EATestCaseBaseDebugger {
- public void runTestCase() throws Exception {
-     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-     printStack(bpe);
-     int[] expectedVals = {1, 2, 3};
-     checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.I, expectedVals);
- }
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        int[] expectedVals = {1, 2, 3};
+        checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.I, expectedVals);
+    }
 }
 
 class EAMaterializeLongArray extends EATestCaseBaseDebugger {
- public void runTestCase() throws Exception {
-     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-     printStack(bpe);
-     long[] expectedVals = {1, 2, 3};
-     checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.J, expectedVals);
- }
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        long[] expectedVals = {1, 2, 3};
+        checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.J, expectedVals);
+    }
 }
 
 class EAMaterializeFloatArray extends EATestCaseBaseDebugger {
- public void runTestCase() throws Exception {
-     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-     printStack(bpe);
-     float[] expectedVals = {1.1f, 2.2f, 3.3f};
-     checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.F, expectedVals);
- }
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        float[] expectedVals = {1.1f, 2.2f, 3.3f};
+        checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.F, expectedVals);
+    }
 }
 
 class EAMaterializeDoubleArray extends EATestCaseBaseDebugger {
- public void runTestCase() throws Exception {
-     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-     printStack(bpe);
-     double[] expectedVals = {1.1d, 2.2d, 3.3d};
-     checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.D, expectedVals);
- }
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        double[] expectedVals = {1.1d, 2.2d, 3.3d};
+        checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.D, expectedVals);
+    }
 }
 
 class EAMaterializeObjectArray extends EATestCaseBaseDebugger {
- public void runTestCase() throws Exception {
-     BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-     printStack(bpe);
-     ObjectReference[] expectedVals = getExpectedVals(bpe.thread().frame(0));
-     checkLocalObjectArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", "java.lang.Long[]", expectedVals);
- }
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference[] expectedVals = getExpectedVals(bpe.thread().frame(0));
+        checkLocalObjectArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", "java.lang.Long[]", expectedVals);
+    }
 
- public ObjectReference[] getExpectedVals(StackFrame stackFrame) {
-     ObjectReference[] result = new ObjectReference[3];
-     ReferenceType clazz = stackFrame.location().declaringType();
-     result[0] = (ObjectReference) clazz.getValue(clazz.fieldByName("NOT_CONST_1_OBJ"));
-     result[1] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_2_OBJ"));
-     result[2] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_3_OBJ"));
-     return result;
- }
+    public ObjectReference[] getExpectedVals(StackFrame stackFrame) {
+        ObjectReference[] result = new ObjectReference[3];
+        ReferenceType clazz = stackFrame.location().declaringType();
+        result[0] = (ObjectReference) clazz.getValue(clazz.fieldByName("NOT_CONST_1_OBJ"));
+        result[1] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_2_OBJ"));
+        result[2] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_3_OBJ"));
+        return result;
+    }
 }
 
 class EAMaterializeObjectWithConstantAndNotConstantValues extends EATestCaseBaseDebugger {
@@ -477,7 +477,7 @@ class EAMaterializeObjectWithConstantAndNotConstantValues extends EATestCaseBase
         checkObjField(o, "java.lang.Long[]", "o", expVals[0]);
         checkObjField(o, "java.lang.Long[]", "o2", expVals[1]);
     }
-    
+
     public ObjectReference[] getExpectedVals(StackFrame stackFrame) {
         ObjectReference[] result = new ObjectReference[2];
         ReferenceType clazz = stackFrame.location().declaringType();
@@ -678,7 +678,7 @@ class ILFDO {
         this.o = o;
         this.o2 = o2;
     }
-    
+
 }
 
 //make sure a compiled frame is not deoptimized if an escaping local is accessed
