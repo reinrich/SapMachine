@@ -754,17 +754,13 @@ class EAMaterializeObjectArray extends EATestCaseBaseDebugger {
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
-        ObjectReference[] expectedVals = getExpectedVals(bpe.thread().frame(0));
+        ReferenceType clazz = bpe.thread().frame(0).location().declaringType();
+        ObjectReference[] expectedVals = {
+                (ObjectReference) clazz.getValue(clazz.fieldByName("NOT_CONST_1_OBJ")),
+                (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_2_OBJ")),
+                (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_3_OBJ"))
+        };
         checkLocalObjectArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", "java.lang.Long[]", expectedVals);
-    }
-
-    public ObjectReference[] getExpectedVals(StackFrame stackFrame) {
-        ObjectReference[] result = new ObjectReference[3];
-        ReferenceType clazz = stackFrame.location().declaringType();
-        result[0] = (ObjectReference) clazz.getValue(clazz.fieldByName("NOT_CONST_1_OBJ"));
-        result[1] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_2_OBJ"));
-        result[2] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_3_OBJ"));
-        return result;
     }
 }
 
@@ -805,17 +801,13 @@ class EAMaterializeObjectWithConstantAndNotConstantValues extends EATestCaseBase
         checkField(o, FD.F, "f2", 2.1f);
         checkField(o, FD.D, "d", 1.1d);
         checkField(o, FD.D, "d2", 2.1d);
-        ObjectReference[] expVals = getExpectedVals(bpe.thread().frame(1));
+        ReferenceType clazz = bpe.thread().frame(1).location().declaringType();
+        ObjectReference[] expVals = {
+                (ObjectReference) clazz.getValue(clazz.fieldByName("NOT_CONST_1_OBJ")),
+                (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_2_OBJ")),
+        };
         checkObjField(o, "java.lang.Long[]", "o", expVals[0]);
         checkObjField(o, "java.lang.Long[]", "o2", expVals[1]);
-    }
-
-    public ObjectReference[] getExpectedVals(StackFrame stackFrame) {
-        ObjectReference[] result = new ObjectReference[2];
-        ReferenceType clazz = stackFrame.location().declaringType();
-        result[0] = (ObjectReference) clazz.getValue(clazz.fieldByName("NOT_CONST_1_OBJ"));
-        result[1] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_2_OBJ"));
-        return result;
     }
 }
 
