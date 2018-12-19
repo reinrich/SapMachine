@@ -548,27 +548,45 @@ class EAGetWithoutMaterialize extends EATestCaseBaseDebugger {
 
 /////////////////////////////////////////////////////////////////////////////
 
+// Tests the following:
+//
+// 1. Debugger can obtain a reference to a scalar replaced object R from java thread J.
+//
+// 2. Subsequent modifications of R by J are noticed by the debugger.
+//
 class EAMaterializeLocalVariableUponGetTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(4, 2);
         dontinline_brkpt();
+        xy.x += 1;                // change scalar replaced object after debugger obtained a reference to it
         iResult = xy.x + xy.y;
     }
 
     @Override
     public int getExpectedIResult() {
-        return 4 + 2;
+        return 4 + 2 + 1;
     }
 }
 
 class EAMaterializeLocalVariableUponGet extends EATestCaseBaseDebugger {
+
+    private ObjectReference o;
+
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
-        ObjectReference o = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
+        // check 1.
+        o = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
         checkField(o, FD.I, "x", 4);
         checkField(o, FD.I, "y", 2);
+    }
+
+    @Override
+    public void checkPostConditions() throws Exception {
+        super.checkPostConditions();
+        // check 2.
+        checkField(o, FD.I, "x", 5);
     }
 }
 
@@ -799,7 +817,7 @@ class EAMaterializeObjectWithConstantAndNotConstantValues extends EATestCaseBase
         result[1] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_2_OBJ"));
         return result;
     }
-   }
+}
 
 // End of test case collection
 //////////////////////////////////////////////////////////////////////
