@@ -264,7 +264,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
     public static final Function<PrimitiveValue, Double>  v2D = PrimitiveValue::doubleValue;
     Map<FD, Function<PrimitiveValue, ?>> FD2getter = Map.of(FD.I, v2I, FD.J, v2J, FD.F, v2F, FD.D, v2D);
 
-    protected void checkLocalPrimitiveArray(StackFrame frame, String expectedMethodName, String lName, FD desc, Object expVals) throws Exception {
+    protected void checkLocalPrimitiveArray(StackFrame frame, String lName, FD desc, Object expVals) throws Exception {
         String lType = FD2JDIType.get(desc);
         Asserts.assertNotNull(lType, "jdi type not found");
         Asserts.assertEQ(EATestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
@@ -389,7 +389,7 @@ class EAMaterializeIntArray extends EATestCaseBaseDebugger {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
         int[] expectedVals = {1, 2, 3};
-        checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.I, expectedVals);
+        checkLocalPrimitiveArray(bpe.thread().frame(1), "nums", FD.I, expectedVals);
     }
 }
 
@@ -398,7 +398,7 @@ class EAMaterializeLongArray extends EATestCaseBaseDebugger {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
         long[] expectedVals = {1, 2, 3};
-        checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.J, expectedVals);
+        checkLocalPrimitiveArray(bpe.thread().frame(1), "nums", FD.J, expectedVals);
     }
 }
 
@@ -407,7 +407,7 @@ class EAMaterializeFloatArray extends EATestCaseBaseDebugger {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
         float[] expectedVals = {1.1f, 2.2f, 3.3f};
-        checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.F, expectedVals);
+        checkLocalPrimitiveArray(bpe.thread().frame(1), "nums", FD.F, expectedVals);
     }
 }
 
@@ -416,7 +416,7 @@ class EAMaterializeDoubleArray extends EATestCaseBaseDebugger {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
         double[] expectedVals = {1.1d, 2.2d, 3.3d};
-        checkLocalPrimitiveArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", FD.D, expectedVals);
+        checkLocalPrimitiveArray(bpe.thread().frame(1), "nums", FD.D, expectedVals);
     }
 }
 
