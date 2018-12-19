@@ -304,12 +304,12 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
                 Asserts.assertNotNull(lVal);
                 Asserts.assertEQ(lVal.type().name(), lType);
                 ArrayReference aRef = (ArrayReference) lVal;
-                Asserts.assertEQ(aRef.length(), 3);
+                Asserts.assertEQ(3, aRef.length());
                 // now check the elements
                 for (int i = 0; i < aRef.length(); i++) {
                     Object actVal = FD2getter.get(desc).apply((PrimitiveValue)aRef.getValue(i));
                     Object expVal = Array.get(expVals, i);
-                    Asserts.assertEQ(actVal, expVal , "checking element at index " + i);
+                    Asserts.assertEQ(expVal, actVal, "checking element at index " + i);
                 }
             }
         }
@@ -327,13 +327,13 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
                 found  = true;
                 Value lVal = frame.getValue(lv);
                 Asserts.assertNotNull(lVal);
-                Asserts.assertEQ(lVal.type().name(), lType);
+                Asserts.assertEQ(lType, lVal.type().name());
                 ArrayReference aRef = (ArrayReference) lVal;
-                Asserts.assertEQ(aRef.length(), 3);
+                Asserts.assertEQ(3, aRef.length());
                 // now check the elements
                 for (int i = 0; i < aRef.length(); i++) {
                     ObjectReference actVal = (ObjectReference)aRef.getValue(i);
-                    Asserts.assertSame(actVal, expVals[i] , "checking element at index " + i);
+                    Asserts.assertSame(expVals[i], actVal, "checking element at index " + i);
                 }
             }
         }
@@ -350,7 +350,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
             if (lv.name().equals(lName)) {
                 Value lVal = frame.getValue(lv);
                 Asserts.assertNotNull(lVal);
-                Asserts.assertEQ(lVal.type().name(), lType);
+                Asserts.assertEQ(lType, lVal.type().name());
                 lRef = (ObjectReference) lVal;
             }
         }
@@ -365,7 +365,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         Field fld = rt.fieldByName(fName);
         Value val = o.getValue(fld);
         Object actVal = FD2getter.get(desc).apply((PrimitiveValue) val);
-        Asserts.assertEQ(actVal, expVal, "field " + fName + " has unexpected value.");
+        Asserts.assertEQ(expVal, actVal, "field " + fName + " has unexpected value.");
         msg("ok");
     }
 
@@ -374,7 +374,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         ReferenceType rt = o.referenceType();
         Field fld = rt.fieldByName(fName);
         Value actVal = o.getValue(fld);
-        Asserts.assertEQ(actVal, expVal, "field " + fName + " has unexpected value.");
+        Asserts.assertEQ(expVal, actVal, "field " + fName + " has unexpected value.");
         msg("ok");
     }
 }
@@ -470,7 +470,7 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
             Asserts.fail("could not check compilation level of", e);
         }
         int highest_level = CompilerUtils.getMaxCompilationLevel();
-        Asserts.assertEQ(WB.getMethodCompilationLevel(m), highest_level,
+        Asserts.assertEQ(highest_level, WB.getMethodCompilationLevel(m),
                 m + " not on expected compilation level");
     }
 
@@ -495,10 +495,10 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
     }
 
     private void checkResult() {
-        Asserts.assertEQ(iResult, getExpectedIResult(), "checking iResult");
-        Asserts.assertEQ(lResult, getExpectedLResult(), "checking lResult");
-        Asserts.assertEQ(fResult, getExpectedFResult(), "checking fResult");
-        Asserts.assertEQ(dResult, getExpectedDResult(), "checking dResult");
+        Asserts.assertEQ(getExpectedIResult(), iResult, "checking iResult");
+        Asserts.assertEQ(getExpectedLResult(), lResult, "checking lResult");
+        Asserts.assertEQ(getExpectedFResult(), fResult, "checking fResult");
+        Asserts.assertEQ(getExpectedDResult(), dResult, "checking dResult");
     }
 
     public void msg(String m) {
