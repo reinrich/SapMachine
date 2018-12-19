@@ -93,7 +93,10 @@ Manual execution:
 
 // TODO: remove trace options like '-XX:+PrintCompilation -XX:+PrintInlining' to avoid deadlock as in https://bugs.openjdk.java.net/browse/JDK-8213902
 
+/////////////////////////////////////////////////////////////////////////////
 // Shared base class for test cases for both, debugger and debuggee.
+/////////////////////////////////////////////////////////////////////////////
+
 class EATestCaseBaseShared {
     // If the property is given, then just the test case it refers to is executed.
     // Use it to diagnose test failures.
@@ -114,7 +117,27 @@ class EATestCaseBaseShared {
 }
 
 /////////////////////////////////////////////////////////////////////////////
-// Debugger Side
+//Target main class, i.e. the program to be debugged.
+/////////////////////////////////////////////////////////////////////////////
+
+class EATestsTarget {
+
+    public static void main(String[] args) {
+        new EAMaterializeLocalVariableUponGetTarget().run();
+        new EAGetWithoutMaterializeTarget()          .run();
+        new EAMaterializeLocalAtObjectReturnTarget() .run();
+        new EAMaterializeIntArrayTarget()            .run();
+        new EAMaterializeLongArrayTarget()           .run();
+        new EAMaterializeFloatArrayTarget()          .run();
+        new EAMaterializeDoubleArrayTarget()         .run();
+        new EAMaterializeObjectArrayTarget()         .run();
+        new EAMaterializeObjectWithConstantAndNotConstantValuesTarget().run();
+    }
+
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Debugger main class
 /////////////////////////////////////////////////////////////////////////////
 
 public class EATests extends TestScaffold {
@@ -172,7 +195,10 @@ public class EATests extends TestScaffold {
     }
 }
 
-//Base class for debugger side of test cases.
+/////////////////////////////////////////////////////////////////////////////
+// Base class for debugger side of test cases.
+/////////////////////////////////////////////////////////////////////////////
+
 abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements Runnable {
 
     protected EATests env;
@@ -353,139 +379,10 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
     }
 }
 
-//make sure a compiled frame is not deoptimized if an escaping local is accessed
-class EAGetWithoutMaterialize extends EATestCaseBaseDebugger {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        ObjectReference o = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
-        checkField(o, FD.I, "x", 4);
-        checkField(o, FD.I, "y", 2);
-    }
-}
-
-class EAMaterializeLocalVariableUponGet extends EATestCaseBaseDebugger {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        ObjectReference o = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
-        checkField(o, FD.I, "x", 4);
-        checkField(o, FD.I, "y", 2);
-    }
-}
-
-class EAMaterializeLocalAtObjectReturn extends EATestCaseBaseDebugger {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        ObjectReference o = getLocalRef(bpe.thread().frame(2), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
-        checkField(o, FD.I, "x", 4);
-        checkField(o, FD.I, "y", 2);
-    }
-}
-
-class EAMaterializeIntArray extends EATestCaseBaseDebugger {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        int[] expectedVals = {1, 2, 3};
-        checkLocalPrimitiveArray(bpe.thread().frame(1), "nums", FD.I, expectedVals);
-    }
-}
-
-class EAMaterializeLongArray extends EATestCaseBaseDebugger {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        long[] expectedVals = {1, 2, 3};
-        checkLocalPrimitiveArray(bpe.thread().frame(1), "nums", FD.J, expectedVals);
-    }
-}
-
-class EAMaterializeFloatArray extends EATestCaseBaseDebugger {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        float[] expectedVals = {1.1f, 2.2f, 3.3f};
-        checkLocalPrimitiveArray(bpe.thread().frame(1), "nums", FD.F, expectedVals);
-    }
-}
-
-class EAMaterializeDoubleArray extends EATestCaseBaseDebugger {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        double[] expectedVals = {1.1d, 2.2d, 3.3d};
-        checkLocalPrimitiveArray(bpe.thread().frame(1), "nums", FD.D, expectedVals);
-    }
-}
-
-class EAMaterializeObjectArray extends EATestCaseBaseDebugger {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        ObjectReference[] expectedVals = getExpectedVals(bpe.thread().frame(0));
-        checkLocalObjectArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", "java.lang.Long[]", expectedVals);
-    }
-
-    public ObjectReference[] getExpectedVals(StackFrame stackFrame) {
-        ObjectReference[] result = new ObjectReference[3];
-        ReferenceType clazz = stackFrame.location().declaringType();
-        result[0] = (ObjectReference) clazz.getValue(clazz.fieldByName("NOT_CONST_1_OBJ"));
-        result[1] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_2_OBJ"));
-        result[2] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_3_OBJ"));
-        return result;
-    }
-}
-
-class EAMaterializeObjectWithConstantAndNotConstantValues extends EATestCaseBaseDebugger {
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        ObjectReference o = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "ILFDO", "o");
-        checkField(o, FD.I, "i", 1);
-        checkField(o, FD.I, "i2", 2);
-        checkField(o, FD.J, "l", 1L);
-        checkField(o, FD.J, "l2", 2L);
-        checkField(o, FD.F, "f", 1.1f);
-        checkField(o, FD.F, "f2", 2.1f);
-        checkField(o, FD.D, "d", 1.1d);
-        checkField(o, FD.D, "d2", 2.1d);
-        ObjectReference[] expVals = getExpectedVals(bpe.thread().frame(1));
-        checkObjField(o, "java.lang.Long[]", "o", expVals[0]);
-        checkObjField(o, "java.lang.Long[]", "o2", expVals[1]);
-    }
-
-    public ObjectReference[] getExpectedVals(StackFrame stackFrame) {
-        ObjectReference[] result = new ObjectReference[2];
-        ReferenceType clazz = stackFrame.location().declaringType();
-        result[0] = (ObjectReference) clazz.getValue(clazz.fieldByName("NOT_CONST_1_OBJ"));
-        result[1] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_2_OBJ"));
-        return result;
-    }
-   }
-
 /////////////////////////////////////////////////////////////////////////////
-// Target side, i.e. the program to be debugged.
-/////////////////////////////////////////////////////////////////////////////
-
-class EATestsTarget {
-
-    public static void main(String[] args) {
-        new EAMaterializeLocalVariableUponGetTarget().run();
-        new EAGetWithoutMaterializeTarget()          .run();
-        new EAMaterializeLocalAtObjectReturnTarget() .run();
-        new EAMaterializeIntArrayTarget()            .run();
-        new EAMaterializeLongArrayTarget()           .run();
-        new EAMaterializeFloatArrayTarget()          .run();
-        new EAMaterializeDoubleArrayTarget()         .run();
-        new EAMaterializeObjectArrayTarget()         .run();
-        new EAMaterializeObjectWithConstantAndNotConstantValuesTarget().run();
-    }
-
-}
-
 // Base class for debuggee side of test cases.
+/////////////////////////////////////////////////////////////////////////////
+
 abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runnable {
 
     public static final String TESTMETHOD_NAME = "dontinline_testMethod";
@@ -611,6 +508,304 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
     }
 }
 
+/////////////////////////////////////////////////////////////////////////////
+// Test Cases
+/////////////////////////////////////////////////////////////////////////////
+
+//make sure a compiled frame is not deoptimized if an escaping local is accessed
+class EAGetWithoutMaterializeTarget extends EATestCaseBaseTarget {
+
+    public PointXY getAway;
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testFrameShouldBeDeoptimized = false;
+    }
+
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(4, 2);
+        getAway = xy;
+        dontinline_brkpt();
+        iResult = xy.x + xy.y;
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 4 + 2;
+    }
+}
+
+class EAGetWithoutMaterialize extends EATestCaseBaseDebugger {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference o = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
+        checkField(o, FD.I, "x", 4);
+        checkField(o, FD.I, "y", 2);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+class EAMaterializeLocalVariableUponGetTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(4, 2);
+        dontinline_brkpt();
+        iResult = xy.x + xy.y;
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 4 + 2;
+    }
+}
+
+class EAMaterializeLocalVariableUponGet extends EATestCaseBaseDebugger {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference o = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
+        checkField(o, FD.I, "x", 4);
+        checkField(o, FD.I, "y", 2);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+class EAMaterializeLocalAtObjectReturnTarget extends EATestCaseBaseTarget {
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+    }
+
+    // TODO: Materialize object in non-topframe at call returning an object
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(4, 2);
+        Integer io = dontinline_brkpt_return_Integer();
+        iResult = xy.x + xy.y + io;
+    }
+
+    public Integer dontinline_brkpt_return_Integer() {
+        // We can't break directly in this method, as this results in making
+        // the test method not entrant caused by an existing dependency
+        dontinline_brkpt();
+        return Integer.valueOf(23);
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 4 + 2 + 23;
+    }
+}
+
+class EAMaterializeLocalAtObjectReturn extends EATestCaseBaseDebugger {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference o = getLocalRef(bpe.thread().frame(2), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
+        checkField(o, FD.I, "x", 4);
+        checkField(o, FD.I, "y", 2);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Test case collection that tests rematerialization of different
+// array types, where the first element is always not constant and the
+// other elements are constants. Not constant values are stored in
+// the stack frame for rematerialization whereas constants are kept
+// in the debug info of the nmethod.
+
+class EAMaterializeIntArrayTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        int nums[] = {NOT_CONST_1I , 2, 3};
+        dontinline_brkpt();
+        iResult = nums[0] + nums[1] + nums[2];
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return NOT_CONST_1I + 2 + 3;
+    }
+}
+
+class EAMaterializeIntArray extends EATestCaseBaseDebugger {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        int[] expectedVals = {1, 2, 3};
+        checkLocalPrimitiveArray(bpe.thread().frame(1), "nums", FD.I, expectedVals);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+class EAMaterializeLongArrayTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        long nums[] = {NOT_CONST_1L , 2, 3};
+        dontinline_brkpt();
+        lResult = nums[0] + nums[1] + nums[2];
+    }
+
+    @Override
+    public long getExpectedLResult() {
+        return NOT_CONST_1L + 2 + 3;
+    }
+}
+
+class EAMaterializeLongArray extends EATestCaseBaseDebugger {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        long[] expectedVals = {1, 2, 3};
+        checkLocalPrimitiveArray(bpe.thread().frame(1), "nums", FD.J, expectedVals);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+class EAMaterializeFloatArrayTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        float nums[] = {NOT_CONST_1F , 2.2f, 3.3f};
+        dontinline_brkpt();
+        fResult = nums[0] + nums[1] + nums[2];
+    }
+
+    @Override
+    public float getExpectedFResult() {
+        return NOT_CONST_1F + 2.2f + 3.3f;
+    }
+}
+
+class EAMaterializeFloatArray extends EATestCaseBaseDebugger {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        float[] expectedVals = {1.1f, 2.2f, 3.3f};
+        checkLocalPrimitiveArray(bpe.thread().frame(1), "nums", FD.F, expectedVals);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+class EAMaterializeDoubleArrayTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        double nums[] = {NOT_CONST_1D , 2.2d, 3.3d};
+        dontinline_brkpt();
+        dResult = nums[0] + nums[1] + nums[2];
+    }
+
+    @Override
+    public double getExpectedDResult() {
+        return NOT_CONST_1D + 2.2d + 3.3d;
+    }
+}
+
+class EAMaterializeDoubleArray extends EATestCaseBaseDebugger {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        double[] expectedVals = {1.1d, 2.2d, 3.3d};
+        checkLocalPrimitiveArray(bpe.thread().frame(1), "nums", FD.D, expectedVals);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+class EAMaterializeObjectArrayTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        Long nums[] = {NOT_CONST_1_OBJ , CONST_2_OBJ, CONST_3_OBJ};
+        dontinline_brkpt();
+        lResult = nums[0] + nums[1] + nums[2];
+    }
+
+    @Override
+    public long getExpectedLResult() {
+        return 1 + 2 + 3;
+    }
+}
+
+class EAMaterializeObjectArray extends EATestCaseBaseDebugger {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference[] expectedVals = getExpectedVals(bpe.thread().frame(0));
+        checkLocalObjectArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", "java.lang.Long[]", expectedVals);
+    }
+
+    public ObjectReference[] getExpectedVals(StackFrame stackFrame) {
+        ObjectReference[] result = new ObjectReference[3];
+        ReferenceType clazz = stackFrame.location().declaringType();
+        result[0] = (ObjectReference) clazz.getValue(clazz.fieldByName("NOT_CONST_1_OBJ"));
+        result[1] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_2_OBJ"));
+        result[2] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_3_OBJ"));
+        return result;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+// Materialize an object whose fields have constant and not constant values at
+// the point where the object is materialize.
+class EAMaterializeObjectWithConstantAndNotConstantValuesTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        ILFDO o = new ILFDO(NOT_CONST_1I, 2,
+                            NOT_CONST_1L, 2L,
+                            NOT_CONST_1F, 2.1F,
+                            NOT_CONST_1D, 2.1D,
+                            NOT_CONST_1_OBJ, CONST_2_OBJ
+                            );
+        dontinline_brkpt();
+        dResult =
+            o.i + o.i2 + o.l + o.l2 + o.f + o.f2 + o.d + o.d2 + o.o + o.o2;
+    }
+
+    @Override
+    public double getExpectedDResult() {
+        return NOT_CONST_1I + 2 + NOT_CONST_1L + 2L + NOT_CONST_1F + 2.1F + NOT_CONST_1D + 2.1D + NOT_CONST_1_OBJ + CONST_2_OBJ;
+    }
+}
+
+class EAMaterializeObjectWithConstantAndNotConstantValues extends EATestCaseBaseDebugger {
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference o = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "ILFDO", "o");
+        checkField(o, FD.I, "i", 1);
+        checkField(o, FD.I, "i2", 2);
+        checkField(o, FD.J, "l", 1L);
+        checkField(o, FD.J, "l2", 2L);
+        checkField(o, FD.F, "f", 1.1f);
+        checkField(o, FD.F, "f2", 2.1f);
+        checkField(o, FD.D, "d", 1.1d);
+        checkField(o, FD.D, "d2", 2.1d);
+        ObjectReference[] expVals = getExpectedVals(bpe.thread().frame(1));
+        checkObjField(o, "java.lang.Long[]", "o", expVals[0]);
+        checkObjField(o, "java.lang.Long[]", "o2", expVals[1]);
+    }
+
+    public ObjectReference[] getExpectedVals(StackFrame stackFrame) {
+        ObjectReference[] result = new ObjectReference[2];
+        ReferenceType clazz = stackFrame.location().declaringType();
+        result[0] = (ObjectReference) clazz.getValue(clazz.fieldByName("NOT_CONST_1_OBJ"));
+        result[1] = (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_2_OBJ"));
+        return result;
+    }
+   }
+
+// End of test case collection
+//////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////
+// Helper classes
 class PointXY {
 
     public int x;
@@ -657,170 +852,4 @@ class ILFDO {
         this.o2 = o2;
     }
 
-}
-
-//make sure a compiled frame is not deoptimized if an escaping local is accessed
-class EAGetWithoutMaterializeTarget extends EATestCaseBaseTarget {
-
-    public PointXY getAway;
-
-    @Override
-    public void setUp() {
-        super.setUp();
-        testFrameShouldBeDeoptimized = false;
-    }
-
-    public void dontinline_testMethod() {
-        PointXY xy = new PointXY(4, 2);
-        getAway = xy;
-        dontinline_brkpt();
-        iResult = xy.x + xy.y;
-    }
-
-    @Override
-    public int getExpectedIResult() {
-        return 4 + 2;
-    }
-}
-
-class EAMaterializeLocalVariableUponGetTarget extends EATestCaseBaseTarget {
-
-    public void dontinline_testMethod() {
-        PointXY xy = new PointXY(4, 2);
-        dontinline_brkpt();
-        iResult = xy.x + xy.y;
-    }
-
-    @Override
-    public int getExpectedIResult() {
-        return 4 + 2;
-    }
-}
-
-class EAMaterializeLocalAtObjectReturnTarget extends EATestCaseBaseTarget {
-    @Override
-    public void setUp() {
-        super.setUp();
-        testMethodDepth = 2;
-    }
-
-    // TODO: Materialize object in non-topframe at call returning an object
-    public void dontinline_testMethod() {
-        PointXY xy = new PointXY(4, 2);
-        Integer io = dontinline_brkpt_return_Integer();
-        iResult = xy.x + xy.y + io;
-    }
-
-    public Integer dontinline_brkpt_return_Integer() {
-        // We can't break directly in this method, as this results in making
-        // the test method not entrant caused by an existing dependency
-        dontinline_brkpt();
-        return Integer.valueOf(23);
-    }
-
-    @Override
-    public int getExpectedIResult() {
-        return 4 + 2 + 23;
-    }
-}
-
-//////////////////////////////////////////////////////////////////////
-// Test case collection that tests rematerialization of different
-// array types, where the first element is always not constant and the
-// other elements are constants. Not constant values are stored in
-// the stack frame for rematerialization whereas constants are kept
-// in the debug info of the nmethod.
-class EAMaterializeIntArrayTarget extends EATestCaseBaseTarget {
-
-    public void dontinline_testMethod() {
-        int nums[] = {NOT_CONST_1I , 2, 3};
-        dontinline_brkpt();
-        iResult = nums[0] + nums[1] + nums[2];
-    }
-
-    @Override
-    public int getExpectedIResult() {
-        return NOT_CONST_1I + 2 + 3;
-    }
-}
-
-class EAMaterializeLongArrayTarget extends EATestCaseBaseTarget {
-
-    public void dontinline_testMethod() {
-        long nums[] = {NOT_CONST_1L , 2, 3};
-        dontinline_brkpt();
-        lResult = nums[0] + nums[1] + nums[2];
-    }
-
-    @Override
-    public long getExpectedLResult() {
-        return NOT_CONST_1L + 2 + 3;
-    }
-}
-
-class EAMaterializeFloatArrayTarget extends EATestCaseBaseTarget {
-
-    public void dontinline_testMethod() {
-        float nums[] = {NOT_CONST_1F , 2.2f, 3.3f};
-        dontinline_brkpt();
-        fResult = nums[0] + nums[1] + nums[2];
-    }
-
-    @Override
-    public float getExpectedFResult() {
-        return NOT_CONST_1F + 2.2f + 3.3f;
-    }
-}
-
-class EAMaterializeDoubleArrayTarget extends EATestCaseBaseTarget {
-
-    public void dontinline_testMethod() {
-        double nums[] = {NOT_CONST_1D , 2.2d, 3.3d};
-        dontinline_brkpt();
-        dResult = nums[0] + nums[1] + nums[2];
-    }
-
-    @Override
-    public double getExpectedDResult() {
-        return NOT_CONST_1D + 2.2d + 3.3d;
-    }
-}
-
-class EAMaterializeObjectArrayTarget extends EATestCaseBaseTarget {
-
-    public void dontinline_testMethod() {
-        Long nums[] = {NOT_CONST_1_OBJ , CONST_2_OBJ, CONST_3_OBJ};
-        dontinline_brkpt();
-        lResult = nums[0] + nums[1] + nums[2];
-    }
-
-    @Override
-    public long getExpectedLResult() {
-        return 1 + 2 + 3;
-    }
-}
-
-// End of test case collection
-//////////////////////////////////////////////////////////////////////
-
-// Materialize an object whose fields have constant and not constant values at
-// the point where the object is materialize.
-class EAMaterializeObjectWithConstantAndNotConstantValuesTarget extends EATestCaseBaseTarget {
-
-    public void dontinline_testMethod() {
-        ILFDO o = new ILFDO(NOT_CONST_1I, 2,
-                            NOT_CONST_1L, 2L,
-                            NOT_CONST_1F, 2.1F,
-                            NOT_CONST_1D, 2.1D,
-                            NOT_CONST_1_OBJ, CONST_2_OBJ
-                            );
-        dontinline_brkpt();
-        dResult =
-            o.i + o.i2 + o.l + o.l2 + o.f + o.f2 + o.d + o.d2 + o.o + o.o2;
-    }
-
-    @Override
-    public double getExpectedDResult() {
-        return NOT_CONST_1I + 2 + NOT_CONST_1L + 2L + NOT_CONST_1F + 2.1F + NOT_CONST_1D + 2.1D + NOT_CONST_1_OBJ + CONST_2_OBJ;
-    }
 }
