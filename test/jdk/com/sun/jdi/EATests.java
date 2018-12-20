@@ -345,7 +345,8 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         msg("OK.");
     }
 
-    protected ObjectReference getLocalRef(StackFrame frame, String expectedMethodName, String lType, String lName) throws Exception {
+    protected ObjectReference getLocalRef(StackFrame frame, String lType, String lName) throws Exception {
+        String expectedMethodName = EATestCaseBaseTarget.TESTMETHOD_NAME;
         Asserts.assertEQ(expectedMethodName, frame.location().method().name());
         List<LocalVariable> localVars = frame.visibleVariables();
         msg("Get and check local variable " + lName + " in " + expectedMethodName);
@@ -552,7 +553,7 @@ class EAGetWithoutMaterialize extends EATestCaseBaseDebugger {
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
-        ObjectReference o = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
+        ObjectReference o = getLocalRef(bpe.thread().frame(1), "PointXY", "xy");
         checkField(o, FD.I, "x", 4);
         checkField(o, FD.I, "y", 2);
     }
@@ -589,7 +590,7 @@ class EAMaterializeLocalVariableUponGet extends EATestCaseBaseDebugger {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
         // check 1.
-        o = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
+        o = getLocalRef(bpe.thread().frame(1), "PointXY", "xy");
         checkField(o, FD.I, "x", 4);
         checkField(o, FD.I, "y", 2);
     }
@@ -635,7 +636,7 @@ class EAMaterializeLocalAtObjectReturn extends EATestCaseBaseDebugger {
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
-        ObjectReference o = getLocalRef(bpe.thread().frame(2), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
+        ObjectReference o = getLocalRef(bpe.thread().frame(2), "PointXY", "xy");
         checkField(o, FD.I, "x", 4);
         checkField(o, FD.I, "y", 2);
     }
@@ -804,7 +805,7 @@ class EAMaterializeObjectWithConstantAndNotConstantValues extends EATestCaseBase
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
-        ObjectReference o = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "ILFDO", "o");
+        ObjectReference o = getLocalRef(bpe.thread().frame(1), "ILFDO", "o");
         checkField(o, FD.I, "i", 1);
         checkField(o, FD.I, "i2", 2);
         checkField(o, FD.J, "l", 1L);
@@ -848,8 +849,8 @@ class EAMaterializeObjReferencedBy2Locals extends EATestCaseBaseDebugger {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
         // check 1.
-        ObjectReference xy = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
-        ObjectReference alias = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
+        ObjectReference xy = getLocalRef(bpe.thread().frame(1), "PointXY", "xy");
+        ObjectReference alias = getLocalRef(bpe.thread().frame(1), "PointXY", "xy");
         Asserts.assertSame(xy, alias, "xy and alias are expected to reference the same object");
     }
 
@@ -879,7 +880,7 @@ class EAMaterializeObjReferencedBy2LocalsAndModify extends EATestCaseBaseDebugge
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
-        ObjectReference alias = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
+        ObjectReference alias = getLocalRef(bpe.thread().frame(1), "PointXY", "xy");
         setField(alias, FD.I, "x", env.vm().mirrorOf(42));
     }
 }
