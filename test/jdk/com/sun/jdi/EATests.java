@@ -134,6 +134,8 @@ class EATestsTarget {
         new EAMaterializeObjectWithConstantAndNotConstantValuesTarget().run();
         new EAMaterializeObjReferencedBy2LocalsTarget().run();
         new EAMaterializeObjReferencedBy2LocalsAndModifyTarget().run();
+        new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesTarget().run();
+        new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModifyTarget().run();
     }
 
 }
@@ -173,6 +175,8 @@ public class EATests extends TestScaffold {
         new EAMaterializeObjectWithConstantAndNotConstantValues().setScaffold(this).run();
         new EAMaterializeObjReferencedBy2Locals().setScaffold(this).run();
         new EAMaterializeObjReferencedBy2LocalsAndModify().setScaffold(this).run();
+        new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFrames().setScaffold(this).run();
+        new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModify().setScaffold(this).run();
 
         // resume the target listening for events
         listenUntilVMDisconnect();
@@ -232,6 +236,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
     }
 
     public void resumeToTestCaseDone() {
+        msg("resuming to " + getTargetTestCaseBaseName() + ".testCaseDone()V");
         env.resumeTo(getTargetTestCaseBaseName(), "testCaseDone", "()V");
     }
 
@@ -343,8 +348,12 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         msg("OK.");
     }
 
+        
     protected ObjectReference getLocalRef(StackFrame frame, String lType, String lName) throws Exception {
-        String expectedMethodName = EATestCaseBaseTarget.TESTMETHOD_NAME;
+        return getLocalRef(frame, EATestCaseBaseTarget.TESTMETHOD_NAME, lType, lName);
+    }
+
+    protected ObjectReference getLocalRef(StackFrame frame, String expectedMethodName, String lType, String lName) throws Exception {
         Asserts.assertEQ(expectedMethodName, frame.location().method().name());
         List<LocalVariable> localVars = frame.visibleVariables();
         msg("Get and check local variable '" + lName + "' in " + expectedMethodName);
@@ -845,7 +854,6 @@ class EAMaterializeObjReferencedBy2Locals extends EATestCaseBaseDebugger {
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
-        // check 1.
         ObjectReference xy = getLocalRef(bpe.thread().frame(1), "PointXY", "xy");
         ObjectReference alias = getLocalRef(bpe.thread().frame(1), "PointXY", "alias");
         Asserts.assertSame(xy, alias, "xy and alias are expected to reference the same object");
@@ -880,6 +888,79 @@ class EAMaterializeObjReferencedBy2LocalsAndModify extends EATestCaseBaseDebugge
         ObjectReference alias = getLocalRef(bpe.thread().frame(1), "PointXY", "alias");
         setField(alias, FD.I, "x", env.vm().mirrorOf(42));
     }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+// Two local variables of the same compiled frame but in different virtual frames reference the same
+// object.
+// Check if the debugger obtains the same object when reading the two variables
+class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(2, 3);
+        testMethod_inlined(xy);
+        iResult += xy.x;
+    }
+
+    public void testMethod_inlined(PointXY xy) {
+        PointXY alias = xy;
+        dontinline_brkpt();
+        iResult = alias.x;
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 2 + 2;
+    }
+}
+
+class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFrames extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference xy = getLocalRef(bpe.thread().frame(2), "PointXY", "xy");
+        ObjectReference alias = getLocalRef(bpe.thread().frame(1), "testMethod_inlined", "PointXY", "alias");
+        Asserts.assertSame(xy, alias, "xy and alias are expected to reference the same object");
+    }
+
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+// Two local variables of the same compiled frame but in different virtual frames reference the same
+// object.
+// Check if it has the expected effect in the target, if the debugger modifies the object.
+class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModifyTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(2, 3);
+        testMethod_inlined(xy);   // debugger: xy.x = 42
+        iResult += xy.x;
+    }
+
+    public void testMethod_inlined(PointXY xy) {
+        PointXY alias = xy;
+        dontinline_brkpt();
+        iResult = alias.x;
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 42 + 42;
+    }
+}
+
+class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModify extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference alias = getLocalRef(bpe.thread().frame(1), "testMethod_inlined", "PointXY", "alias");
+        setField(alias, FD.I, "x", env.vm().mirrorOf(42));
+    }
+
 }
 
 // End of test case collection
