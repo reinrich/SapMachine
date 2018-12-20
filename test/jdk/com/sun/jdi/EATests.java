@@ -299,7 +299,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         Asserts.assertNotNull(lType, "jdi type not found");
         Asserts.assertEQ(EATestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
         List<LocalVariable> localVars = frame.visibleVariables();
-        msg("Check if the local array variable " + lName  + " in " + EATestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
+        msg("Check if the local array variable '" + lName  + "' in " + EATestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
         boolean found = false;
         for (LocalVariable lv : localVars) {
             if (lv.name().equals(lName)) {
@@ -324,7 +324,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
     protected void checkLocalObjectArray(StackFrame frame, String expectedMethodName, String lName, String lType, ObjectReference[] expVals) throws Exception {
         Asserts.assertEQ(EATestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
         List<LocalVariable> localVars = frame.visibleVariables();
-        msg("Check if the local array variable " + lName  + " in " + EATestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
+        msg("Check if the local array variable '" + lName  + "' in " + EATestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
         boolean found = false;
         for (LocalVariable lv : localVars) {
             if (lv.name().equals(lName)) {
@@ -349,7 +349,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         String expectedMethodName = EATestCaseBaseTarget.TESTMETHOD_NAME;
         Asserts.assertEQ(expectedMethodName, frame.location().method().name());
         List<LocalVariable> localVars = frame.visibleVariables();
-        msg("Get and check local variable " + lName + " in " + expectedMethodName);
+        msg("Get and check local variable '" + lName + "' in " + expectedMethodName);
         ObjectReference lRef = null;
         for (LocalVariable lv : localVars) {
             if (lv.name().equals(lName)) {
@@ -359,7 +359,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
                 lRef = (ObjectReference) lVal;
             }
         }
-        Asserts.assertNotNull(lRef, "Local variable " + lName + " not found");
+        Asserts.assertNotNull(lRef, "Local variable '" + lName + "' not found");
         msg("OK.");
         return lRef;
     }
@@ -370,7 +370,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         Field fld = rt.fieldByName(fName);
         Value val = o.getValue(fld);
         Object actVal = FD2getter.get(desc).apply((PrimitiveValue) val);
-        Asserts.assertEQ(expVal, actVal, "field " + fName + " has unexpected value.");
+        Asserts.assertEQ(expVal, actVal, "field '" + fName + "' has unexpected value.");
         msg("ok");
     }
 
@@ -379,7 +379,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         ReferenceType rt = o.referenceType();
         Field fld = rt.fieldByName(fName);
         Value actVal = o.getValue(fld);
-        Asserts.assertEQ(expVal, actVal, "field " + fName + " has unexpected value.");
+        Asserts.assertEQ(expVal, actVal, "field '" + fName + "' has unexpected value.");
         msg("ok");
     }
 
@@ -850,7 +850,7 @@ class EAMaterializeObjReferencedBy2Locals extends EATestCaseBaseDebugger {
         printStack(bpe);
         // check 1.
         ObjectReference xy = getLocalRef(bpe.thread().frame(1), "PointXY", "xy");
-        ObjectReference alias = getLocalRef(bpe.thread().frame(1), "PointXY", "xy");
+        ObjectReference alias = getLocalRef(bpe.thread().frame(1), "PointXY", "alias");
         Asserts.assertSame(xy, alias, "xy and alias are expected to reference the same object");
     }
 
@@ -880,7 +880,7 @@ class EAMaterializeObjReferencedBy2LocalsAndModify extends EATestCaseBaseDebugge
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
-        ObjectReference alias = getLocalRef(bpe.thread().frame(1), "PointXY", "xy");
+        ObjectReference alias = getLocalRef(bpe.thread().frame(1), "PointXY", "alias");
         setField(alias, FD.I, "x", env.vm().mirrorOf(42));
     }
 }
