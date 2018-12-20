@@ -158,8 +158,6 @@ public class EATests extends TestScaffold {
 
     // Execute known test cases
     protected void runTests() throws Exception {
-        msg("EATestsTarget.RUN_ONLY_TEST_CASE=" + EATestCaseBaseShared.RUN_ONLY_TEST_CASE);
-
         String targetProgName = EATestsTarget.class.getName();
         msg("starting to main method in class " +  targetProgName);
         startToMain(targetProgName);
@@ -426,7 +424,6 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
     public static final    Long CONST_3_OBJ     = Long.valueOf(3);
 
     public void run() {
-        msg("EATestsTarget.RUN_ONLY_TEST_CASE=" + EATestCaseBaseShared.RUN_ONLY_TEST_CASE);
         if (shouldSkip()) {
             msg("skipping " + testCaseName);
             return;
