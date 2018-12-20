@@ -132,6 +132,8 @@ class EATestsTarget {
         new EAMaterializeDoubleArrayTarget()         .run();
         new EAMaterializeObjectArrayTarget()         .run();
         new EAMaterializeObjectWithConstantAndNotConstantValuesTarget().run();
+        new EAMaterializeObjReferencedBy2LocalsTarget().run();
+        new EAMaterializeObjReferencedBy2LocalsAndModifyTarget().run();
     }
 
 }
@@ -171,6 +173,8 @@ public class EATests extends TestScaffold {
         new EAMaterializeDoubleArray()         .setScaffold(this).run();
         new EAMaterializeObjectArray()         .setScaffold(this).run();
         new EAMaterializeObjectWithConstantAndNotConstantValues().setScaffold(this).run();
+        new EAMaterializeObjReferencedBy2Locals().setScaffold(this).run();
+        new EAMaterializeObjReferencedBy2LocalsAndModify().setScaffold(this).run();
 
         // resume the target listening for events
         listenUntilVMDisconnect();
@@ -375,6 +379,14 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         Field fld = rt.fieldByName(fName);
         Value actVal = o.getValue(fld);
         Asserts.assertEQ(expVal, actVal, "field " + fName + " has unexpected value.");
+        msg("ok");
+    }
+
+    protected void setField(ObjectReference o, FD desc, String fName, Value val) throws Exception {
+        msg("set field " + fName + " = " + val);
+        ReferenceType rt = o.referenceType();
+        Field fld = rt.fieldByName(fName);
+        o.setValue(fld, val);
         msg("ok");
     }
 }
@@ -811,10 +823,71 @@ class EAMaterializeObjectWithConstantAndNotConstantValues extends EATestCaseBase
     }
 }
 
-// End of test case collection
-//////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
 
-//////////////////////////////////////////////////////////////////////
+// Two local variables reference the same object.
+// Check if the debugger obtains the same object when reading the two variables
+class EAMaterializeObjReferencedBy2LocalsTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(2, 3);
+        PointXY alias = xy;
+        dontinline_brkpt();
+        iResult = xy.x + alias.x;
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 2 + 2;
+    }
+}
+
+class EAMaterializeObjReferencedBy2Locals extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        // check 1.
+        ObjectReference xy = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
+        ObjectReference alias = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
+        Asserts.assertSame(xy, alias, "xy and alias are expected to reference the same object");
+    }
+
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+// Two local variables reference the same object.
+// Check if it has the expected effect in the target, if the debugger modifies the object.
+class EAMaterializeObjReferencedBy2LocalsAndModifyTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(2, 3);
+        PointXY alias = xy;
+        dontinline_brkpt(); // debugger: alias.x = 42
+        iResult = xy.x + alias.x;
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 42 + 42;
+    }
+}
+
+class EAMaterializeObjReferencedBy2LocalsAndModify extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference alias = getLocalRef(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "PointXY", "xy");
+        setField(alias, FD.I, "x", env.vm().mirrorOf(42));
+    }
+}
+
+// End of test case collection
+/////////////////////////////////////////////////////////////////////////////
+
+/////////////////////////////////////////////////////////////////////////////
 // Helper classes
 class PointXY {
 
