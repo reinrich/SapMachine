@@ -136,6 +136,7 @@ class EATestsTarget {
         new EAMaterializeObjReferencedBy2LocalsAndModifyTarget().run();
         new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesTarget().run();
         new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModifyTarget().run();
+        new EAMaterializeObjReferencedFromOperandStackTarget().run();
     }
 
 }
@@ -177,6 +178,7 @@ public class EATests extends TestScaffold {
         new EAMaterializeObjReferencedBy2LocalsAndModify().setScaffold(this).run();
         new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFrames().setScaffold(this).run();
         new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModify().setScaffold(this).run();
+        new EAMaterializeObjReferencedFromOperandStack().setScaffold(this).run();
 
         // resume the target listening for events
         listenUntilVMDisconnect();
@@ -288,7 +290,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
 
 
     // Map field descriptor to jdi type string
-    public static final Map<FD, String> FD2JDIType = Map.of(FD.I, "int[]", FD.J, "long[]", FD.F, "float[]", FD.D, "double[]");
+    public static final Map<FD, String> FD2JDIArrType = Map.of(FD.I, "int[]", FD.J, "long[]", FD.F, "float[]", FD.D, "double[]");
 
     // Map field descriptor to PrimitiveValue getter
     public static final Function<PrimitiveValue, Integer> v2I = PrimitiveValue::intValue;
@@ -298,7 +300,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
     Map<FD, Function<PrimitiveValue, ?>> FD2getter = Map.of(FD.I, v2I, FD.J, v2J, FD.F, v2F, FD.D, v2D);
 
     protected void checkLocalPrimitiveArray(StackFrame frame, String lName, FD desc, Object expVals) throws Exception {
-        String lType = FD2JDIType.get(desc);
+        String lType = FD2JDIArrType.get(desc);
         Asserts.assertNotNull(lType, "jdi type not found");
         Asserts.assertEQ(EATestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
         List<LocalVariable> localVars = frame.visibleVariables();
@@ -959,6 +961,52 @@ class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModify extends 
         printStack(bpe);
         ObjectReference alias = getLocalRef(bpe.thread().frame(1), "testMethod_inlined", "PointXY", "alias");
         setField(alias, FD.I, "x", env.vm().mirrorOf(42));
+    }
+
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+// Test materialization of an object referenced only from expression stack
+class EAMaterializeObjReferencedFromOperandStackTarget extends EATestCaseBaseTarget {
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+    }
+
+    public void dontinline_testMethod() {
+        PointXY xy1 = new PointXY(2, 3);
+        // Debugger breaks in call to dontinline_brkpt_ret_100() and reads
+        // the value of the local 'xy1'. This triggers materialization
+        // of the object on the operand stack
+        iResult = testMethodInlined(new PointXY(4, 2), dontinline_brkpt_ret_100());
+    }
+
+    public int testMethodInlined(PointXY xy2, int dontinline_brkpt_ret_100) {
+        return xy2.x + dontinline_brkpt_ret_100;
+    }
+
+    public int dontinline_brkpt_ret_100() {
+        dontinline_brkpt();
+        return 100;
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 4 + 100;
+    }
+}
+
+class EAMaterializeObjReferencedFromOperandStack extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference xy1 = getLocalRef(bpe.thread().frame(2), "PointXY", "xy1");
+        checkField(xy1, FD.I, "x", 2);
+        checkField(xy1, FD.I, "y", 3);
     }
 
 }
