@@ -302,9 +302,9 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
     protected void checkLocalPrimitiveArray(StackFrame frame, String lName, FD desc, Object expVals) throws Exception {
         String lType = FD2JDIArrType.get(desc);
         Asserts.assertNotNull(lType, "jdi type not found");
-        Asserts.assertEQ(EATestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
+        Asserts.assertEQ(EAMaterializeTestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
         List<LocalVariable> localVars = frame.visibleVariables();
-        msg("Check if the local array variable '" + lName  + "' in " + EATestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
+        msg("Check if the local array variable '" + lName  + "' in " + EAMaterializeTestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
         boolean found = false;
         for (LocalVariable lv : localVars) {
             if (lv.name().equals(lName)) {
@@ -327,9 +327,9 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
     }
 
     protected void checkLocalObjectArray(StackFrame frame, String expectedMethodName, String lName, String lType, ObjectReference[] expVals) throws Exception {
-        Asserts.assertEQ(EATestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
+        Asserts.assertEQ(EAMaterializeTestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
         List<LocalVariable> localVars = frame.visibleVariables();
-        msg("Check if the local array variable '" + lName  + "' in " + EATestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
+        msg("Check if the local array variable '" + lName  + "' in " + EAMaterializeTestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
         boolean found = false;
         for (LocalVariable lv : localVars) {
             if (lv.name().equals(lName)) {
@@ -352,7 +352,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
 
         
     protected ObjectReference getLocalRef(StackFrame frame, String lType, String lName) throws Exception {
-        return getLocalRef(frame, EATestCaseBaseTarget.TESTMETHOD_NAME, lType, lName);
+        return getLocalRef(frame, EAMaterializeTestCaseBaseTarget.TESTMETHOD_NAME, lType, lName);
     }
 
     protected ObjectReference getLocalRef(StackFrame frame, String expectedMethodName, String lType, String lName) throws Exception {
@@ -413,14 +413,20 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
 
     public static final WhiteBox WB = WhiteBox.getWhiteBox();
 
+    // VM flags
+    public static final boolean DoEscapeAnalysis     = WB.getBooleanVMFlag("DoEscapeAnalysis");
+    public static final boolean EliminateAllocations = WB.getBooleanVMFlag("EliminateAllocations");
+    public static final boolean EliminateLocks       = WB.getBooleanVMFlag("EliminateLocks");
+    public static final boolean EliminateNestedLocks = WB.getBooleanVMFlag("EliminateNestedLocks");
+    public static final boolean UseBiasedLocking     = WB.getBooleanVMFlag("UseBiasedLocking");
+
+
     public int  iResult;
     public long lResult;
     public float  fResult;
     public double dResult;
 
     public int testMethodDepth;
-
-    public boolean testFrameShouldBeDeoptimized;
 
     private boolean warmupDone;
 
@@ -451,7 +457,6 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
 
     public void setUp() {
         testMethodDepth = 1;
-        testFrameShouldBeDeoptimized = true;
     }
 
     public abstract void dontinline_testMethod();
@@ -459,12 +464,16 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
     public void dontinline_brkpt() {
         // will set breakpoint here after warmup
         if (warmupDone) {
-            if (testFrameShouldBeDeoptimized) {
+            if (testFrameShouldBeDeoptimized()) {
                 Asserts.assertTrue(WB.isFrameDeoptimized(testMethodDepth+1), testCaseName + ": expected test method frame at depth " + testMethodDepth + " to be deoptimized");
             } else {
                 Asserts.assertFalse(WB.isFrameDeoptimized(testMethodDepth+1), testCaseName + ": expected test method frame at depth " + testMethodDepth + " not to be deoptimized");
             }
         }
+    }
+
+    public boolean testFrameShouldBeDeoptimized() {
+        return false;
     }
 
     public void warmupDone() {
@@ -530,19 +539,25 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
 }
 
 /////////////////////////////////////////////////////////////////////////////
+// Base class for debuggee side of test cases that do materialization of
+// scalar replaced objects.
+/////////////////////////////////////////////////////////////////////////////
+
+abstract class EAMaterializeTestCaseBaseTarget extends EATestCaseBaseTarget {
+    @Override
+    public boolean testFrameShouldBeDeoptimized() {
+        return DoEscapeAnalysis && EliminateAllocations;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
 // Test Cases
 /////////////////////////////////////////////////////////////////////////////
 
-//make sure a compiled frame is not deoptimized if an escaping local is accessed
+// make sure a compiled frame is not deoptimized if an escaping local is accessed
 class EAGetWithoutMaterializeTarget extends EATestCaseBaseTarget {
 
     public PointXY getAway;
-
-    @Override
-    public void setUp() {
-        super.setUp();
-        testFrameShouldBeDeoptimized = false;
-    }
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(4, 2);
@@ -575,7 +590,7 @@ class EAGetWithoutMaterialize extends EATestCaseBaseDebugger {
 //
 // 2. Subsequent modifications of R by J are noticed by the debugger.
 //
-class EAMaterializeLocalVariableUponGetTarget extends EATestCaseBaseTarget {
+class EAMaterializeLocalVariableUponGetTarget extends EAMaterializeTestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(4, 2);
@@ -613,7 +628,7 @@ class EAMaterializeLocalVariableUponGet extends EATestCaseBaseDebugger {
 
 /////////////////////////////////////////////////////////////////////////////
 
-class EAMaterializeLocalAtObjectReturnTarget extends EATestCaseBaseTarget {
+class EAMaterializeLocalAtObjectReturnTarget extends EAMaterializeTestCaseBaseTarget {
     @Override
     public void setUp() {
         super.setUp();
@@ -657,7 +672,7 @@ class EAMaterializeLocalAtObjectReturn extends EATestCaseBaseDebugger {
 // the stack frame for rematerialization whereas constants are kept
 // in the debug info of the nmethod.
 
-class EAMaterializeIntArrayTarget extends EATestCaseBaseTarget {
+class EAMaterializeIntArrayTarget extends EAMaterializeTestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         int nums[] = {NOT_CONST_1I , 2, 3};
@@ -682,7 +697,7 @@ class EAMaterializeIntArray extends EATestCaseBaseDebugger {
 
 /////////////////////////////////////////////////////////////////////////////
 
-class EAMaterializeLongArrayTarget extends EATestCaseBaseTarget {
+class EAMaterializeLongArrayTarget extends EAMaterializeTestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         long nums[] = {NOT_CONST_1L , 2, 3};
@@ -707,7 +722,7 @@ class EAMaterializeLongArray extends EATestCaseBaseDebugger {
 
 /////////////////////////////////////////////////////////////////////////////
 
-class EAMaterializeFloatArrayTarget extends EATestCaseBaseTarget {
+class EAMaterializeFloatArrayTarget extends EAMaterializeTestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         float nums[] = {NOT_CONST_1F , 2.2f, 3.3f};
@@ -732,7 +747,7 @@ class EAMaterializeFloatArray extends EATestCaseBaseDebugger {
 
 /////////////////////////////////////////////////////////////////////////////
 
-class EAMaterializeDoubleArrayTarget extends EATestCaseBaseTarget {
+class EAMaterializeDoubleArrayTarget extends EAMaterializeTestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         double nums[] = {NOT_CONST_1D , 2.2d, 3.3d};
@@ -757,7 +772,7 @@ class EAMaterializeDoubleArray extends EATestCaseBaseDebugger {
 
 /////////////////////////////////////////////////////////////////////////////
 
-class EAMaterializeObjectArrayTarget extends EATestCaseBaseTarget {
+class EAMaterializeObjectArrayTarget extends EAMaterializeTestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         Long nums[] = {NOT_CONST_1_OBJ , CONST_2_OBJ, CONST_3_OBJ};
@@ -781,7 +796,7 @@ class EAMaterializeObjectArray extends EATestCaseBaseDebugger {
                 (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_2_OBJ")),
                 (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_3_OBJ"))
         };
-        checkLocalObjectArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_NAME, "nums", "java.lang.Long[]", expectedVals);
+        checkLocalObjectArray(bpe.thread().frame(1), EAMaterializeTestCaseBaseTarget.TESTMETHOD_NAME, "nums", "java.lang.Long[]", expectedVals);
     }
 }
 
@@ -789,7 +804,7 @@ class EAMaterializeObjectArray extends EATestCaseBaseDebugger {
 
 // Materialize an object whose fields have constant and not constant values at
 // the point where the object is materialize.
-class EAMaterializeObjectWithConstantAndNotConstantValuesTarget extends EATestCaseBaseTarget {
+class EAMaterializeObjectWithConstantAndNotConstantValuesTarget extends EAMaterializeTestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         ILFDO o = new ILFDO(NOT_CONST_1I, 2,
@@ -836,7 +851,7 @@ class EAMaterializeObjectWithConstantAndNotConstantValues extends EATestCaseBase
 
 // Two local variables reference the same object.
 // Check if the debugger obtains the same object when reading the two variables
-class EAMaterializeObjReferencedBy2LocalsTarget extends EATestCaseBaseTarget {
+class EAMaterializeObjReferencedBy2LocalsTarget extends EAMaterializeTestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(2, 3);
@@ -867,7 +882,7 @@ class EAMaterializeObjReferencedBy2Locals extends EATestCaseBaseDebugger {
 
 // Two local variables reference the same object.
 // Check if it has the expected effect in the target, if the debugger modifies the object.
-class EAMaterializeObjReferencedBy2LocalsAndModifyTarget extends EATestCaseBaseTarget {
+class EAMaterializeObjReferencedBy2LocalsAndModifyTarget extends EAMaterializeTestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(2, 3);
@@ -897,7 +912,7 @@ class EAMaterializeObjReferencedBy2LocalsAndModify extends EATestCaseBaseDebugge
 // Two local variables of the same compiled frame but in different virtual frames reference the same
 // object.
 // Check if the debugger obtains the same object when reading the two variables
-class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesTarget extends EATestCaseBaseTarget {
+class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesTarget extends EAMaterializeTestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(2, 3);
@@ -934,7 +949,7 @@ class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFrames extends EATestCas
 // Two local variables of the same compiled frame but in different virtual frames reference the same
 // object.
 // Check if it has the expected effect in the target, if the debugger modifies the object.
-class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModifyTarget extends EATestCaseBaseTarget {
+class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModifyTarget extends EAMaterializeTestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(2, 3);
@@ -968,7 +983,7 @@ class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModify extends 
 /////////////////////////////////////////////////////////////////////////////
 
 // Test materialization of an object referenced only from expression stack
-class EAMaterializeObjReferencedFromOperandStackTarget extends EATestCaseBaseTarget {
+class EAMaterializeObjReferencedFromOperandStackTarget extends EAMaterializeTestCaseBaseTarget {
 
     @Override
     public void setUp() {
