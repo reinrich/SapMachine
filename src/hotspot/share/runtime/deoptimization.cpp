@@ -1038,7 +1038,7 @@ bool Deoptimization::realloc_objects(JavaThread* thread, frame* fr, GrowableArra
     sv->set_value(obj);
   }
 
-  if (failures) {
+  if (failures && exec_mode != Unpack_none) {
     THROW_OOP_(Universe::out_of_memory_error_realloc_objects(), failures);
   } else if (pending_exception.not_null()) {
     thread->set_pending_exception(pending_exception(), exception_file, exception_line);
