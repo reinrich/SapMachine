@@ -1096,10 +1096,16 @@ class EARelockingSimple extends EATestCaseBaseDebugger {
 // Test recursive locking
 class EARelockingRecursiveTarget extends EAMaterializeRelockingTestCaseBaseTarget {
 
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+    }
+
     public void dontinline_testMethod() {
         PointXY l1 = new PointXY(4, 2);
         synchronized (l1) {
-            testMethod_inlined();
+            testMethod_inlined(l1);
         }
     }
     public void testMethod_inlined(PointXY l2) {
@@ -1114,7 +1120,7 @@ class EARelockingRecursive extends EATestCaseBaseDebugger {
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
-        ObjectReference o = getLocalRef(bpe.thread().frame(1), "PointXY", "l1");
+        ObjectReference o = getLocalRef(bpe.thread().frame(2), "PointXY", "l1");
     }
 }
 
