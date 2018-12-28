@@ -418,7 +418,8 @@ bool Deoptimization::deoptimize_objects_work(JavaThread* thread, GrowableArray<c
         assert (cvf->scope() != NULL,"expect only compiled java frames");
         GrowableArray<MonitorInfo*>* monitors = cvf->monitors();
         if (monitors->is_nonempty()) {
-          relock_objects(thread, monitors, deoptee_thread, realloc_failures);
+          bool relocked = relock_objects(thread, monitors, deoptee_thread, realloc_failures);
+          deoptimized_objects = deoptimized_objects || relocked;
 #ifndef PRODUCT
           if (PrintDeoptimizationDetails) {
             ttyLocker ttyl;

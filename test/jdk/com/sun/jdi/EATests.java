@@ -490,9 +490,7 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
         }
     }
 
-    public boolean testFrameShouldBeDeoptimized() {
-        return false;
-    }
+    public abstract boolean testFrameShouldBeDeoptimized();
 
     public void warmupDone() {
         msg(testCaseName + " warmup done.");
@@ -583,7 +581,7 @@ abstract class EAMaterializeTestCaseBaseTarget extends EATestCaseBaseTarget {
 abstract class EAMaterializeRelockingTestCaseBaseTarget extends EATestCaseBaseTarget {
     @Override
     public boolean testFrameShouldBeDeoptimized() {
-        return DoEscapeAnalysis && EliminateAllocations && (EliminateLocks || EliminateNestedLocks);
+        return DoEscapeAnalysis && EliminateLocks;
     }
 }
 
@@ -608,6 +606,11 @@ class EAGetWithoutMaterializeTarget extends EATestCaseBaseTarget {
     @Override
     public int getExpectedIResult() {
         return 4 + 2;
+    }
+
+    @Override
+    public boolean testFrameShouldBeDeoptimized() {
+        return false;
     }
 }
 
@@ -1067,7 +1070,7 @@ class EAMaterializeObjReferencedFromOperandStack extends EATestCaseBaseDebugger 
 
 /////////////////////////////////////////////////////////////////////////////
 
-class EARelockUponGetLocalTarget extends EAMaterializeTestCaseBaseTarget {
+class EARelockUponGetLocalTarget extends EAMaterializeRelockingTestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         PointXY l1 = new PointXY(4, 2);
