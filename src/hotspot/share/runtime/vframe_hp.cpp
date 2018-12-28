@@ -426,7 +426,7 @@ void jvmtiDeferredLocalVariableSet::update_monitors(GrowableArray<MonitorInfo*>*
     if (val->index() >= method()->max_locals() + method()->max_stack()) {
       int lock_index = val->index() - (method()->max_locals() + method()->max_stack());
       MonitorInfo* info = monitors->at(lock_index);
-      MonitorInfo* new_info = new MonitorInfo((oopDesc*)val->value().l, info->lock(), info->eliminated(), info->owner_is_scalar_replaced());
+      MonitorInfo* new_info = new MonitorInfo((oopDesc*)val->value().l, info->lock(), info->eliminated(), false);
       monitors->at_put(lock_index, new_info);
     }
   }

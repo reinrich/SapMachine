@@ -94,7 +94,9 @@ Manual execution:
 // TODO: remove trace options like '-XX:+PrintCompilation -XX:+PrintInlining' to avoid deadlock as in https://bugs.openjdk.java.net/browse/JDK-8213902
 
 /////////////////////////////////////////////////////////////////////////////
+//
 // Shared base class for test cases for both, debugger and debuggee.
+//
 /////////////////////////////////////////////////////////////////////////////
 
 class EATestCaseBaseShared {
@@ -117,12 +119,15 @@ class EATestCaseBaseShared {
 }
 
 /////////////////////////////////////////////////////////////////////////////
+//
 //Target main class, i.e. the program to be debugged.
+//
 /////////////////////////////////////////////////////////////////////////////
 
 class EATestsTarget {
 
     public static void main(String[] args) {
+        // materializing test cases
         new EAMaterializeLocalVariableUponGetTarget().run();
         new EAGetWithoutMaterializeTarget()          .run();
         new EAMaterializeLocalAtObjectReturnTarget() .run();
@@ -137,12 +142,17 @@ class EATestsTarget {
         new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesTarget().run();
         new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModifyTarget().run();
         new EAMaterializeObjReferencedFromOperandStackTarget().run();
+
+        // relocking test cases
+        new EARelockUponGetLocalTarget().run();
     }
 
 }
 
 /////////////////////////////////////////////////////////////////////////////
+//
 // Debugger main class
+//
 /////////////////////////////////////////////////////////////////////////////
 
 public class EATests extends TestScaffold {
@@ -165,6 +175,7 @@ public class EATests extends TestScaffold {
         msg("starting to main method in class " +  targetProgName);
         startToMain(targetProgName);
 
+        // materializing test cases
         new EAMaterializeLocalVariableUponGet().setScaffold(this).run();
         new EAGetWithoutMaterialize()          .setScaffold(this).run();
         new EAMaterializeLocalAtObjectReturn() .setScaffold(this).run();
@@ -179,6 +190,9 @@ public class EATests extends TestScaffold {
         new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFrames().setScaffold(this).run();
         new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModify().setScaffold(this).run();
         new EAMaterializeObjReferencedFromOperandStack().setScaffold(this).run();
+
+        // relocking test cases
+        new EARelockUponGetLocal()             .setScaffold(this).run();
 
         // resume the target listening for events
         listenUntilVMDisconnect();
@@ -204,7 +218,9 @@ public class EATests extends TestScaffold {
 }
 
 /////////////////////////////////////////////////////////////////////////////
+//
 // Base class for debugger side of test cases.
+//
 /////////////////////////////////////////////////////////////////////////////
 
 abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements Runnable {
@@ -350,7 +366,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         msg("OK.");
     }
 
-        
+
     protected ObjectReference getLocalRef(StackFrame frame, String lType, String lName) throws Exception {
         return getLocalRef(frame, EAMaterializeTestCaseBaseTarget.TESTMETHOD_NAME, lType, lName);
     }
@@ -402,7 +418,9 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
 }
 
 /////////////////////////////////////////////////////////////////////////////
+//
 // Base class for debuggee side of test cases.
+//
 /////////////////////////////////////////////////////////////////////////////
 
 abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runnable {
@@ -539,8 +557,10 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
 }
 
 /////////////////////////////////////////////////////////////////////////////
+//
 // Base class for debuggee side of test cases that do materialization of
 // scalar replaced objects.
+//
 /////////////////////////////////////////////////////////////////////////////
 
 abstract class EAMaterializeTestCaseBaseTarget extends EATestCaseBaseTarget {
@@ -551,7 +571,26 @@ abstract class EAMaterializeTestCaseBaseTarget extends EATestCaseBaseTarget {
 }
 
 /////////////////////////////////////////////////////////////////////////////
+//
+// Base class for debuggee side of test cases that do
+//
+//    - materialization of scalar replaced objects.
+//
+//    - relocking
+//
+/////////////////////////////////////////////////////////////////////////////
+
+abstract class EAMaterializeRelockingTestCaseBaseTarget extends EATestCaseBaseTarget {
+    @Override
+    public boolean testFrameShouldBeDeoptimized() {
+        return DoEscapeAnalysis && EliminateAllocations && (EliminateLocks || EliminateNestedLocks);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+//
 // Test Cases
+//
 /////////////////////////////////////////////////////////////////////////////
 
 // make sure a compiled frame is not deoptimized if an escaping local is accessed
@@ -1024,6 +1063,27 @@ class EAMaterializeObjReferencedFromOperandStack extends EATestCaseBaseDebugger 
         checkField(xy1, FD.I, "y", 3);
     }
 
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+class EARelockUponGetLocalTarget extends EAMaterializeTestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY l1 = new PointXY(4, 2);
+        synchronized (l1) {
+            dontinline_brkpt();
+        }
+    }
+}
+
+class EARelockUponGetLocal extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference o = getLocalRef(bpe.thread().frame(1), "PointXY", "l1");
+    }
 }
 
 // End of test case collection

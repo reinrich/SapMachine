@@ -164,7 +164,7 @@ JVMCI_ONLY(public:)
   static void reassign_type_array_elements(frame* fr, RegisterMap* reg_map, ObjectValue* sv, typeArrayOop obj, BasicType type);
   static void reassign_object_array_elements(frame* fr, RegisterMap* reg_map, ObjectValue* sv, objArrayOop obj);
   static void reassign_fields(frame* fr, RegisterMap* reg_map, GrowableArray<ScopeValue*>* objects, bool realloc_failures, bool skip_internal);
-  static bool relock_objects(frame* f1, int exec_mode, GrowableArray<MonitorInfo*>* monitors, JavaThread* thread, bool realloc_failures);
+  static bool relock_objects(JavaThread* thread, GrowableArray<MonitorInfo*>* monitors, JavaThread* deoptee_thread, bool realloc_failures);
   static void pop_frames_failed_reallocs(JavaThread* thread, vframeArray* array);
   NOT_PRODUCT(static void print_objects(GrowableArray<ScopeValue*>* objects, bool realloc_failures);)
   // Reallocate scalar replaced objects and relock objects either (a) to replace the owning compiled

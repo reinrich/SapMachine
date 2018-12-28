@@ -290,11 +290,13 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
           }
 
           // monitors
-          GrowableArray<MonitorValue*>* scopeMonitors = cvf->scope()->monitors();
           GrowableArray<MonitorInfo*>* monitors = cvf->monitors();
           if (monitors != NULL) {
             for (int i2 = 0; i2 < monitors->length(); i2++) {
-              cvf->update_monitor(i2, monitors->at(i2));
+              if (monitors->at(i2)->eliminated()) {
+                assert(!monitors->at(i2)->owner_is_scalar_replaced(), "reallocation failure, should not update");
+                cvf->update_monitor(i2, monitors->at(i2));
+              }
             }
           }
         }
@@ -416,7 +418,7 @@ bool Deoptimization::deoptimize_objects_work(JavaThread* thread, GrowableArray<c
         assert (cvf->scope() != NULL,"expect only compiled java frames");
         GrowableArray<MonitorInfo*>* monitors = cvf->monitors();
         if (monitors->is_nonempty()) {
-          relock_objects(&deoptee, exec_mode, monitors, deoptee_thread, realloc_failures);
+          relock_objects(thread, monitors, deoptee_thread, realloc_failures);
 #ifndef PRODUCT
           if (PrintDeoptimizationDetails) {
             ttyLocker ttyl;
@@ -1321,13 +1323,14 @@ void Deoptimization::reassign_fields(frame* fr, RegisterMap* reg_map, GrowableAr
 
 
 // relock objects for which synchronization was eliminated
-bool Deoptimization::relock_objects(frame* f1, int exec_mode, GrowableArray<MonitorInfo*>* monitors, JavaThread* thread, bool realloc_failures) {
+bool Deoptimization::relock_objects(JavaThread* thread, GrowableArray<MonitorInfo*>* monitors, JavaThread* deoptee_thread, bool realloc_failures) {
   //TODO
   bool relocked_objects = false;
   for (int i = 0; i < monitors->length(); i++) {
     MonitorInfo* mon_info = monitors->at(i);
     if (mon_info->eliminated()) {
       assert(!mon_info->owner_is_scalar_replaced() || realloc_failures, "reallocation was missed");
+      relocked_objects = true;
       if (!mon_info->owner_is_scalar_replaced()) {
         Handle obj(thread, mon_info->owner());
         markOop mark = obj->mark();
@@ -1336,13 +1339,13 @@ bool Deoptimization::relock_objects(frame* f1, int exec_mode, GrowableArray<Moni
           // Also the deoptimized method may called methods with synchronization
           // where the thread-local object is bias locked to the current thread.
           assert(mark->is_biased_anonymously() ||
-                 mark->biased_locker() == thread, "should be locked to current thread");
+                 mark->biased_locker() == deoptee_thread, "should be locked to current thread");
           // Reset mark word to unbiased prototype.
           markOop unbiased_prototype = markOopDesc::prototype()->set_age(mark->age());
           obj->set_mark(unbiased_prototype);
         }
         BasicLock* lock = mon_info->lock();
-        ObjectSynchronizer::slow_enter(obj, lock, thread);
+        ObjectSynchronizer::slow_enter(obj, lock, deoptee_thread);
         assert(mon_info->owner()->is_locked(), "object must be locked now");
       }
     }
