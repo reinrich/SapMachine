@@ -133,6 +133,24 @@ void Deoptimization::UnrollBlock::print() {
 }
 
 
+// Returns true iff allocations or locks were eliminated in the compiled frame represented by the given virtual frames.
+bool Deoptimization::has_eliminated_allocs_or_locks(GrowableArray<compiledVFrame*>* vfs) {
+  bool found = vfs->at(0)->scope()->objects();
+  for (int i = 0; !found && (i < vfs->length()); i++) {
+    GrowableArray<MonitorInfo*>* monitors = vfs->at(i)->monitors();
+    if (monitors->is_nonempty()) {
+      for (int i = 0; !found && (i < monitors->length()); i++) {
+        MonitorInfo* mon_info = monitors->at(i);
+        if (mon_info->eliminated()) {
+          found = true;
+        }
+      }
+    }
+  }
+  return found;
+}
+
+
 // Returns true iff objects were reallocated and relocked because of access through JVMTI
 bool Deoptimization::objs_are_deoptimized(frame* fr, JavaThread* thread) {
   GrowableArray<jvmtiDeferredLocalVariableSet*>* list = thread->deferred_locals();
@@ -209,19 +227,11 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
     }
     vfs->push(cvf);
 
-    // reallocate and relock optimized objects
-    JavaThread* thread = JavaThread::current();
-    Thread* THREAD = thread;
-    bool dummy;
-    bool deoptimized_objects = Deoptimization::deoptimize_objects_work(thread, vfs, dummy, Unpack_none, CHECK_AND_CLEAR_false);
-    if (deoptimized_objects) {
-      // Deoptimized objects (and there is at least one) are found in the locals/expression/monitors of the virtual frames in vfs.
-      // Keep them as deferred updates.
-      GrowableArray<compiledVFrame*>* vfs_with_objs   = vfs;
-      GrowableArray<compiledVFrame*>* vfs_after_deopt = vfs;
-      vfs = NULL;
+    if (has_eliminated_allocs_or_locks(vfs)) {
 
-      // The compiled frame must be deoptimized to update locals/expressions/monitors
+      // Execution must not continue in the compiled method, so we deoptimize the frame.
+      // As a side effect all locking biases will be removed which makes relocking
+      // of eliminated nested locks easier.
       if (!fr->is_deoptimized_frame()) {
         deoptimize_frame(deoptee_thread, fr->id());
 
@@ -232,58 +242,64 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
         }
         assert(fst.current()->id() == fr->id(), "frame not found after deoptimization");
         // collect inlined frames
-        compiledVFrame* cvf = compiledVFrame::cast(vframe::new_vframe(fst.current(), reg_map, deoptee_thread));;
-        vfs_after_deopt = new GrowableArray<compiledVFrame*>(10);
+        cvf = compiledVFrame::cast(vframe::new_vframe(fst.current(), reg_map, deoptee_thread));;
+        vfs = new GrowableArray<compiledVFrame*>(10);
         while (!cvf->is_top()) {
-          vfs_after_deopt->push(cvf);
+          vfs->push(cvf);
           cvf = compiledVFrame::cast(cvf->sender());
         }
-        vfs_after_deopt->push(cvf);
+        vfs->push(cvf);
       }
 
-      // now do the updates
-      for (int frame_index = 0; frame_index < vfs_with_objs->length(); frame_index++) {
-        compiledVFrame* cvf_after_deopt = vfs_after_deopt->at(frame_index);
-        compiledVFrame* cvf_with_objs   = vfs_with_objs->at(frame_index);
+      // reallocate and relock optimized objects
+      JavaThread* thread = JavaThread::current();
+      Thread* THREAD = thread;
+      bool dummy;
+      bool deoptimized_objects = Deoptimization::deoptimize_objects_work(thread, vfs, dummy, Unpack_none, CHECK_AND_CLEAR_false);
+      if (deoptimized_objects) {
+        // now do the updates
+        for (int frame_index = 0; frame_index < vfs->length(); frame_index++) {
+          cvf = vfs->at(frame_index);
 
-        // locals
-        GrowableArray<ScopeValue*>* scopeLocals = cvf_with_objs->scope()->locals();
-        StackValueCollection* locals = cvf_with_objs->locals();
-        if (locals != NULL) {
-          for (int i2 = 0; i2 < locals->size(); i2++) {
-            StackValue* var = locals->at(i2);
-            if (var->type() == T_OBJECT && scopeLocals->at(i2)->is_object()) {
-              jvalue val;
-              val.l = (jobject) locals->at(i2)->get_obj()();
-              cvf_after_deopt->update_local(T_OBJECT, i2, val);
+          // locals
+          GrowableArray<ScopeValue*>* scopeLocals = cvf->scope()->locals();
+          StackValueCollection* locals = cvf->locals();
+          if (locals != NULL) {
+            for (int i2 = 0; i2 < locals->size(); i2++) {
+              StackValue* var = locals->at(i2);
+              if (var->type() == T_OBJECT && scopeLocals->at(i2)->is_object()) {
+                jvalue val;
+                val.l = (jobject) locals->at(i2)->get_obj()();
+                cvf->update_local(T_OBJECT, i2, val);
+              }
+            }
+          }
+
+          // expressions
+          GrowableArray<ScopeValue*>* scopeExpressions = cvf->scope()->expressions();
+          StackValueCollection* expressions = cvf->expressions();
+          if (expressions != NULL) {
+            for (int i2 = 0; i2 < expressions->size(); i2++) {
+              StackValue* var = expressions->at(i2);
+              if (var->type() == T_OBJECT && scopeExpressions->at(i2)->is_object()) {
+                jvalue val;
+                val.l = (jobject) expressions->at(i2)->get_obj()();
+                cvf->update_stack(T_OBJECT, i2, val);
+              }
+            }
+          }
+
+          // monitors
+          GrowableArray<MonitorValue*>* scopeMonitors = cvf->scope()->monitors();
+          GrowableArray<MonitorInfo*>* monitors = cvf->monitors();
+          if (monitors != NULL) {
+            for (int i2 = 0; i2 < monitors->length(); i2++) {
+              cvf->update_monitor(i2, monitors->at(i2));
             }
           }
         }
-
-        // expressions
-        GrowableArray<ScopeValue*>* scopeExpressions = cvf_with_objs->scope()->expressions();
-        StackValueCollection* expressions = cvf_with_objs->expressions();
-        if (expressions != NULL) {
-          for (int i2 = 0; i2 < expressions->size(); i2++) {
-            StackValue* var = expressions->at(i2);
-            if (var->type() == T_OBJECT && scopeExpressions->at(i2)->is_object()) {
-              jvalue val;
-              val.l = (jobject) expressions->at(i2)->get_obj()();
-              cvf_after_deopt->update_stack(T_OBJECT, i2, val);
-            }
-          }
-        }
-
-        // monitors
-        GrowableArray<MonitorValue*>* scopeMonitors = cvf_with_objs->scope()->monitors();
-        GrowableArray<MonitorInfo*>* monitors = cvf_with_objs->monitors();
-        if (monitors != NULL) {
-          for (int i2 = 0; i2 < monitors->length(); i2++) {
-            cvf->update_monitor(i2, monitors->at(i2));
-          }
-        }
+        assert(objs_are_deoptimized(fr, deoptee_thread), "sanity");
       }
-      assert(objs_are_deoptimized(fr, deoptee_thread), "sanity");
     }
   }
   return true; // no error occurred

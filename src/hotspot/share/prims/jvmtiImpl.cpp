@@ -747,6 +747,7 @@ bool VM_GetOrSetLocal::deoptimize_objects(javaVFrame* vf) {
           return false;
         }
         nmethod* nm = vf->nm()->as_nmethod();
+        // TODO: vf->fr() is stale: is_deoptimized_frame() yields wrong result
         if ((nm->optimized_because_of_no_escapes() || nm->eliminated_sync_on_arg_escapes()
             || nm->eliminated_sync_on_non_escapes()) && !vf->fr().is_deoptimized_frame()) {
           // must deoptimize the frame, even if no objects where deoptimized, because

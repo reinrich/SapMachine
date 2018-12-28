@@ -171,6 +171,8 @@ JVMCI_ONLY(public:)
   // frame with corresponding interpreter frames or (b) to make them accessible for JVMTI
   // agents. deoptimizing_frame == true indicates case (a). Returns false if reallocation fails.
   static bool deoptimize_objects_work(JavaThread* thread, GrowableArray<compiledVFrame*>* chunk, bool& realloc_failures, int exec_mode, TRAPS);
+  // Returns true iff allocations or locks were eliminated in the compiled frame represented by the given virtual frames.
+  static bool has_eliminated_allocs_or_locks(GrowableArray<compiledVFrame*>* vfs);
   // Returns true iff objects were reallocated and relocked because of access through JVMTI
   static bool objs_are_deoptimized(frame* fr, JavaThread* thread);
 
