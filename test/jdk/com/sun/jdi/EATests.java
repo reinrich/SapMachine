@@ -144,7 +144,7 @@ class EATestsTarget {
         new EAMaterializeObjReferencedFromOperandStackTarget().run();
 
         // relocking test cases
-        new EARelockUponGetLocalTarget().run();
+        new EARelockingSimpleTarget()                .run();
     }
 
 }
@@ -192,7 +192,7 @@ public class EATests extends TestScaffold {
         new EAMaterializeObjReferencedFromOperandStack().setScaffold(this).run();
 
         // relocking test cases
-        new EARelockUponGetLocal()             .setScaffold(this).run();
+        new EARelockingSimple()                .setScaffold(this).run();
 
         // resume the target listening for events
         listenUntilVMDisconnect();
@@ -1070,7 +1070,7 @@ class EAMaterializeObjReferencedFromOperandStack extends EATestCaseBaseDebugger 
 
 /////////////////////////////////////////////////////////////////////////////
 
-class EARelockUponGetLocalTarget extends EAMaterializeRelockingTestCaseBaseTarget {
+class EARelockingSimpleTarget extends EAMaterializeRelockingTestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         PointXY l1 = new PointXY(4, 2);
@@ -1080,7 +1080,7 @@ class EARelockUponGetLocalTarget extends EAMaterializeRelockingTestCaseBaseTarge
     }
 }
 
-class EARelockUponGetLocal extends EATestCaseBaseDebugger {
+class EARelockingSimple extends EATestCaseBaseDebugger {
 
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
