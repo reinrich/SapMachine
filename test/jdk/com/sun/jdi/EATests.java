@@ -127,6 +127,8 @@ class EATestCaseBaseShared {
 class EATestsTarget {
 
     public static void main(String[] args) {
+        EATestCaseBaseTarget.staticSetUp();
+
         // materializing test cases
         new EAMaterializeLocalVariableUponGetTarget().run();
         new EAGetWithoutMaterializeTarget()          .run();
@@ -145,7 +147,8 @@ class EATestsTarget {
 
         // relocking test cases
         new EARelockingSimpleTarget()                .run();
-        new EARelockingRecursiveTarget()                .run();
+        new EARelockingRecursiveTarget()             .run();
+        new EARelockingNestedInflatedTarget()        .run();
     }
 
 }
@@ -194,7 +197,8 @@ public class EATests extends TestScaffold {
 
         // relocking test cases
         new EARelockingSimple()                .setScaffold(this).run();
-        new EARelockingRecursive()                .setScaffold(this).run();
+        new EARelockingRecursive()             .setScaffold(this).run();
+        new EARelockingNestedInflated()        .setScaffold(this).run();
 
         // resume the target listening for events
         listenUntilVMDisconnect();
@@ -451,12 +455,19 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
     private boolean warmupDone;
 
 
+
+    public static PointXY inflatedLock;
+    public static Thread  inflatorThread;
+    public static boolean inflatedLockIsPermanentlyInflated;
+
     public static int    NOT_CONST_1I = 1;
     public static long   NOT_CONST_1L = 1L;
     public static float  NOT_CONST_1F = 1.1F;
     public static double NOT_CONST_1D = 1.1D;
 
     public static          Long NOT_CONST_1_OBJ = Long.valueOf(1);
+
+
     public static final    Long CONST_2_OBJ     = Long.valueOf(2);
     public static final    Long CONST_3_OBJ     = Long.valueOf(3);
 
@@ -473,6 +484,36 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
         dontinline_testMethod();
         checkResult();
         testCaseDone();
+    }
+
+    public static void staticSetUp() {
+        inflatedLock = new PointXY(1, 1);
+        synchronized (inflatedLock) {
+            inflatorThread = new Thread("Lock Inflator (test thread)") {
+                @Override
+                public void run() {
+                    synchronized (inflatedLock) {
+                        inflatedLockIsPermanentlyInflated = true;
+                        inflatedLock.notify(); // main thread
+                        while (true) {
+                            try {
+                                // calling wait() on a monitor will cause inflation into a heavy monitor
+                                inflatedLock.wait();
+                            } catch (InterruptedException e) { /* ignored */ }
+                        }
+                    }
+                }
+            };
+            inflatorThread.setDaemon(true);
+            inflatorThread.start();
+
+            // wait until the lock is permanently inflated by the inflatorThread
+            while(!inflatedLockIsPermanentlyInflated) {
+                try {
+                    inflatedLock.wait(); // until inflated
+                } catch (InterruptedException e1) { /* ignored */ }
+            }
+        }
     }
 
     public void setUp() {
@@ -1108,6 +1149,7 @@ class EARelockingRecursiveTarget extends EAMaterializeRelockingTestCaseBaseTarge
             testMethod_inlined(l1);
         }
     }
+
     public void testMethod_inlined(PointXY l2) {
         synchronized (l2) {
             dontinline_brkpt();
@@ -1116,6 +1158,40 @@ class EARelockingRecursiveTarget extends EAMaterializeRelockingTestCaseBaseTarge
 }
 
 class EARelockingRecursive extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference o = getLocalRef(bpe.thread().frame(2), "PointXY", "l1");
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+// Checks if an eliminated nested lock of an inflated monitor can be relocked.
+class EARelockingNestedInflatedTarget extends EAMaterializeRelockingTestCaseBaseTarget {
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+    }
+
+    public void dontinline_testMethod() {
+        PointXY l1 = inflatedLock;
+        synchronized (l1) {
+            testMethod_inlined(l1);
+        }
+    }
+
+    public void testMethod_inlined(PointXY l2) {
+        synchronized (l2) {
+            dontinline_brkpt();
+        }
+    }
+}
+
+class EARelockingNestedInflated extends EATestCaseBaseDebugger {
 
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
