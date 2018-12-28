@@ -145,6 +145,7 @@ class EATestsTarget {
 
         // relocking test cases
         new EARelockingSimpleTarget()                .run();
+        new EARelockingRecursiveTarget()                .run();
     }
 
 }
@@ -193,6 +194,7 @@ public class EATests extends TestScaffold {
 
         // relocking test cases
         new EARelockingSimple()                .setScaffold(this).run();
+        new EARelockingRecursive()                .setScaffold(this).run();
 
         // resume the target listening for events
         listenUntilVMDisconnect();
@@ -1081,6 +1083,33 @@ class EARelockingSimpleTarget extends EAMaterializeRelockingTestCaseBaseTarget {
 }
 
 class EARelockingSimple extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference o = getLocalRef(bpe.thread().frame(1), "PointXY", "l1");
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+// Test recursive locking
+class EARelockingRecursiveTarget extends EAMaterializeRelockingTestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY l1 = new PointXY(4, 2);
+        synchronized (l1) {
+            testMethod_inlined();
+        }
+    }
+    public void testMethod_inlined(PointXY l2) {
+        synchronized (l2) {
+            dontinline_brkpt();
+        }
+    }
+}
+
+class EARelockingRecursive extends EATestCaseBaseDebugger {
 
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
