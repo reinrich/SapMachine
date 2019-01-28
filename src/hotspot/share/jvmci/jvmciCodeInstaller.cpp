@@ -1149,6 +1149,7 @@ void CodeInstaller::record_scope(jint pc_offset, JVMCIObject position, ScopeMode
   }
 
   _debug_recorder->describe_scope(pc_offset, method, NULL, bci, reexecute, throw_exception, false, return_oop,
+                                  false /* TODO:not_global_escape_in_scope */, false /*arg_escape*/,
                                   locals_token, expressions_token, monitors_token);
 }
 

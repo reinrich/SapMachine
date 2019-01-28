@@ -123,6 +123,7 @@ bool ConnectionGraph::compute_escape() {
   GrowableArray<JavaObjectNode*> java_objects_worklist;
   GrowableArray<JavaObjectNode*> non_escaped_worklist;
   GrowableArray<FieldNode*>      oop_fields_worklist;
+  GrowableArray<SafePointNode*>  sfn_worklist;
   DEBUG_ONLY( GrowableArray<Node*> addp_worklist; )
 
   { Compile::TracePhase tp("connectionGraph", &Phase::timers[Phase::_t_connectionGraph]);
@@ -187,6 +188,9 @@ bool ConnectionGraph::compute_escape() {
     for (DUIterator_Fast imax, i = n->fast_outs(imax); i < imax; i++) {
       Node* m = n->fast_out(i);   // Get user
       ideal_nodes.push(m);
+    }
+    if (n-> is_SafePoint()) {
+      sfn_worklist.append(n->as_SafePoint());
     }
   }
   if (non_escaped_worklist.length() == 0) {
@@ -317,6 +321,44 @@ bool ConnectionGraph::compute_escape() {
     tty->cr();
 #endif
   }
+
+  // Annotate at safepoints if they have <= ArgEscape objects in their scope and at
+  // java calls if they pass ArgEscape objects as parameters.
+  if (has_non_escaping_obj && C->env()->should_retain_local_variables()) {
+    int sfn_length = sfn_worklist.length();
+    for (int next = 0; next < sfn_length; next++) {
+      SafePointNode* sfn = sfn_worklist.at(next);
+      bool found_not_global_escape = false;
+      bool found_arg_escape_in_params = false;
+      for (JVMState* jvms = sfn->jvms(); jvms && !found_not_global_escape; jvms = jvms->caller()) {
+        int num_locs = jvms->loc_size();
+        for(int idx = 0; idx < num_locs && !found_not_global_escape; idx++ ) {
+          Node* l = sfn->local(jvms, idx);
+          found_not_global_escape = not_global_escape(l);
+        }
+        int num_stk = jvms->stk_size();
+        for(int idx = 0; idx < num_stk && !found_not_global_escape; idx++ ) {
+          Node* s = sfn->stack(jvms, idx);
+          found_not_global_escape = not_global_escape(s);
+        }
+      }
+      sfn->set_not_global_escape_in_scope(found_not_global_escape);
+
+      if (!sfn->is_CallJava()) continue;
+      CallJavaNode* call = sfn->as_CallJava();
+      if (call->is_CallStaticJava()) {
+        const char* name = call->as_CallStaticJava()->_name;
+        if (name != NULL && strcmp(name, "uncommon_trap") == 0) continue; // no arg escapes through uncommon traps
+      }
+      uint param_limit = TypeFunc::Parms + call->method()->arg_size();
+      for(uint idx = TypeFunc::Parms; idx < param_limit && !found_arg_escape_in_params; idx++) {
+        Node* p = call->in(idx);
+        found_arg_escape_in_params = not_global_escape(p);
+      }
+      call->set_arg_escape(found_arg_escape_in_params);
+    }
+  }
+
   return has_non_escaping_obj;
 }
 
@@ -2166,22 +2208,6 @@ bool PointsToNode::non_escaping_allocation() {
   return true;
 }
 
-// Return true if we know the node does not escape the compiled frame.
-bool ConnectionGraph::is_non_escape(Node *n) {
-  assert(!_collecting, "should not call during graph construction");
-  // If the node was created after the escape computation we can't answer.
-  uint idx = n->_idx;
-  if (idx >= nodes_size()) {
-    return false;
-  }
-  PointsToNode* ptn = ptnode_adr(idx);
-  PointsToNode::EscapeState es = ptn->escape_state();
-  // If we have already computed a value, return it.
-  if (es >= PointsToNode::ArgEscape)
-    return false;
-  return ptn->non_escaping_allocation();
-}
-
 // Return true if we know the node does not escape globally.
 bool ConnectionGraph::not_global_escape(Node *n) {
   assert(!_collecting, "should not call during graph construction");
@@ -2191,6 +2217,9 @@ bool ConnectionGraph::not_global_escape(Node *n) {
     return false;
   }
   PointsToNode* ptn = ptnode_adr(idx);
+  if (!ptn) {
+    return false; // not in congraph (e.g. ConI)
+  }
   PointsToNode::EscapeState es = ptn->escape_state();
   // If we have already computed a value, return it.
   if (es >= PointsToNode::GlobalEscape)
@@ -3254,10 +3283,6 @@ void ConnectionGraph::split_unique_types(GrowableArray<Node *>  &alloc_worklist,
   //            actually updated until phase 4.)
   if (memnode_worklist.length() == 0)
     return;  // nothing to do
-  // Record the information that the graph was optimized based on information that non escaping
-  // allocations exist; optimized code must not be executed after escape state was changed by JVMTI
-  // agents, i.e. activations have to be deoptimized in that case.
-  _compile->set_optimized_because_of_no_escapes(true);
   while (memnode_worklist.length() != 0) {
     Node *n = memnode_worklist.pop();
     if (visited.test_set(n->_idx))

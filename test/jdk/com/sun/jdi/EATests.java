@@ -100,6 +100,8 @@ Manual execution:
 /////////////////////////////////////////////////////////////////////////////
 
 class EATestCaseBaseShared {
+    public static final boolean TODO_INTERACTIVE = false;
+    
     // If the property is given, then just the test case it refers to is executed.
     // Use it to diagnose test failures.
     public static final String RUN_ONLY_TEST_CASE_PROPERTY = "test.jdk.com.sun.jdi.EATests.onlytestcase";
@@ -114,13 +116,15 @@ class EATestCaseBaseShared {
     }
 
     public boolean shouldSkip() {
-        return EATestCaseBaseShared.RUN_ONLY_TEST_CASE != null && !testCaseName.equals(EATestCaseBaseShared.RUN_ONLY_TEST_CASE);
+        return EATestCaseBaseShared.RUN_ONLY_TEST_CASE != null &&
+               EATestCaseBaseShared.RUN_ONLY_TEST_CASE.length() > 0 &&
+               !testCaseName.equals(EATestCaseBaseShared.RUN_ONLY_TEST_CASE);
     }
 }
 
 /////////////////////////////////////////////////////////////////////////////
 //
-//Target main class, i.e. the program to be debugged.
+// Target main class, i.e. the program to be debugged.
 //
 /////////////////////////////////////////////////////////////////////////////
 
@@ -129,7 +133,7 @@ class EATestsTarget {
     public static void main(String[] args) {
         EATestCaseBaseTarget.staticSetUp();
 
-        // materializing test cases
+        // Materializing test cases
         new EAMaterializeLocalVariableUponGetTarget().run();
         new EAGetWithoutMaterializeTarget()          .run();
         new EAMaterializeLocalAtObjectReturnTarget() .run();
@@ -145,10 +149,21 @@ class EATestsTarget {
         new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModifyTarget().run();
         new EAMaterializeObjReferencedFromOperandStackTarget().run();
 
-        // relocking test cases
+        // Relocking test cases
         new EARelockingSimpleTarget()                .run();
         new EARelockingRecursiveTarget()             .run();
         new EARelockingNestedInflatedTarget()        .run();
+        new EARelockingNestedInflated_02Target()     .run();
+
+        // Test cases that require deoptimization even though neither
+        // locks nor allocations are eliminated at the point where
+        // escape state is changed.
+        new EADeoptFrameAfterReadLocalObject_01Target().run();
+        new EADeoptFrameAfterReadLocalObject_02Target().run();
+        new EADeoptFrameAfterReadLocalObject_02BTarget().run();
+        new EADeoptFrameAfterReadLocalObject_02CTarget().run();
+        new EADeoptFrameAfterReadLocalObject_02DTarget().run();
+        new EADeoptFrameAfterReadLocalObject_03Target().run();
     }
 
 }
@@ -179,7 +194,7 @@ public class EATests extends TestScaffold {
         msg("starting to main method in class " +  targetProgName);
         startToMain(targetProgName);
 
-        // materializing test cases
+        // Materializing test cases
         new EAMaterializeLocalVariableUponGet().setScaffold(this).run();
         new EAGetWithoutMaterialize()          .setScaffold(this).run();
         new EAMaterializeLocalAtObjectReturn() .setScaffold(this).run();
@@ -195,10 +210,21 @@ public class EATests extends TestScaffold {
         new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModify().setScaffold(this).run();
         new EAMaterializeObjReferencedFromOperandStack().setScaffold(this).run();
 
-        // relocking test cases
+        // Relocking test cases
         new EARelockingSimple()                .setScaffold(this).run();
         new EARelockingRecursive()             .setScaffold(this).run();
         new EARelockingNestedInflated()        .setScaffold(this).run();
+        new EARelockingNestedInflated_02()     .setScaffold(this).run();
+
+        // Test cases that require deoptimization even though neither
+        // locks nor allocations are eliminated at the point where
+        // escape state is changed.
+        new EADeoptFrameAfterReadLocalObject_01().setScaffold(this).run();
+        new EADeoptFrameAfterReadLocalObject_02().setScaffold(this).run();
+        new EADeoptFrameAfterReadLocalObject_02B().setScaffold(this).run();
+        new EADeoptFrameAfterReadLocalObject_02C().setScaffold(this).run();
+        new EADeoptFrameAfterReadLocalObject_02D().setScaffold(this).run();
+        new EADeoptFrameAfterReadLocalObject_03().setScaffold(this).run();
 
         // resume the target listening for events
         listenUntilVMDisconnect();
@@ -245,6 +271,10 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         try {
             msgHL("Executing test case " + getClass().getName());
             env.testFailed = false;
+            
+            if (TODO_INTERACTIVE)
+                env.waitForInput();
+
             resumeToWarmupDone();
             runTestCase();
             resumeToTestCaseDone();
@@ -324,9 +354,9 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
     protected void checkLocalPrimitiveArray(StackFrame frame, String lName, FD desc, Object expVals) throws Exception {
         String lType = FD2JDIArrType.get(desc);
         Asserts.assertNotNull(lType, "jdi type not found");
-        Asserts.assertEQ(EAMaterializeTestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
+        Asserts.assertEQ(EATestCaseBaseTarget.TESTMETHOD_DEFAULT_NAME, frame .location().method().name());
         List<LocalVariable> localVars = frame.visibleVariables();
-        msg("Check if the local array variable '" + lName  + "' in " + EAMaterializeTestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
+        msg("Check if the local array variable '" + lName  + "' in " + EATestCaseBaseTarget.TESTMETHOD_DEFAULT_NAME + " has the expected elements: ");
         boolean found = false;
         for (LocalVariable lv : localVars) {
             if (lv.name().equals(lName)) {
@@ -349,9 +379,9 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
     }
 
     protected void checkLocalObjectArray(StackFrame frame, String expectedMethodName, String lName, String lType, ObjectReference[] expVals) throws Exception {
-        Asserts.assertEQ(EAMaterializeTestCaseBaseTarget.TESTMETHOD_NAME, frame .location().method().name());
+        Asserts.assertEQ(EATestCaseBaseTarget.TESTMETHOD_DEFAULT_NAME, frame .location().method().name());
         List<LocalVariable> localVars = frame.visibleVariables();
-        msg("Check if the local array variable '" + lName  + "' in " + EAMaterializeTestCaseBaseTarget.TESTMETHOD_NAME + " has the expected elements: ");
+        msg("Check if the local array variable '" + lName  + "' in " + EATestCaseBaseTarget.TESTMETHOD_DEFAULT_NAME + " has the expected elements: ");
         boolean found = false;
         for (LocalVariable lv : localVars) {
             if (lv.name().equals(lName)) {
@@ -374,7 +404,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
 
 
     protected ObjectReference getLocalRef(StackFrame frame, String lType, String lName) throws Exception {
-        return getLocalRef(frame, EAMaterializeTestCaseBaseTarget.TESTMETHOD_NAME, lType, lName);
+        return getLocalRef(frame, EATestCaseBaseTarget.TESTMETHOD_DEFAULT_NAME, lType, lName);
     }
 
     protected ObjectReference getLocalRef(StackFrame frame, String expectedMethodName, String lType, String lName) throws Exception {
@@ -421,6 +451,15 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         o.setValue(fld, val);
         msg("ok");
     }
+
+    protected Value getField(ObjectReference o, FD desc, String fName) throws Exception {
+        msg("get field " + fName);
+        ReferenceType rt = o.referenceType();
+        Field fld = rt.fieldByName(fName);
+        Value val = o.getValue(fld);
+        msg("result : " + val);
+        return val;
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -431,7 +470,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
 
 abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runnable {
 
-    public static final String TESTMETHOD_NAME = "dontinline_testMethod";
+    public static final String TESTMETHOD_DEFAULT_NAME = "dontinline_testMethod";
 
     public static final int COMPILE_THRESHOLD = 20000;
 
@@ -444,18 +483,19 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
     public static final boolean EliminateNestedLocks = WB.getBooleanVMFlag("EliminateNestedLocks");
     public static final boolean UseBiasedLocking     = WB.getBooleanVMFlag("UseBiasedLocking");
 
+    public String testMethodName;
+    public int testMethodDepth;
 
     public int  iResult;
     public long lResult;
     public float  fResult;
     public double dResult;
 
-    public int testMethodDepth;
 
-    private boolean warmupDone;
-
+    public boolean warmupDone;
 
 
+    // an object with an inflated monitor
     public static PointXY inflatedLock;
     public static Thread  inflatorThread;
     public static boolean inflatedLockIsPermanentlyInflated;
@@ -518,6 +558,7 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
 
     public void setUp() {
         testMethodDepth = 1;
+        testMethodName = TESTMETHOD_DEFAULT_NAME;
     }
 
     public abstract void dontinline_testMethod();
@@ -525,15 +566,25 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
     public void dontinline_brkpt() {
         // will set breakpoint here after warmup
         if (warmupDone) {
+            // check if test method is at expected depth
+            StackTraceElement[] frames = Thread.currentThread().getStackTrace();
+            int stackTraceDepth = testMethodDepth + 1; // ignore java.lang.Thread.getStackTrace()
+            Asserts.assertEQ(testMethodName, frames[stackTraceDepth].getMethodName(),
+                    testCaseName + ": test method not found at depth " + testMethodDepth);
+            // check if the frame is (not) deoptimized as expected
             if (testFrameShouldBeDeoptimized()) {
-                Asserts.assertTrue(WB.isFrameDeoptimized(testMethodDepth+1), testCaseName + ": expected test method frame at depth " + testMethodDepth + " to be deoptimized");
+                Asserts.assertTrue(WB.isFrameDeoptimized(testMethodDepth+1),
+                        testCaseName + ": expected test method frame at depth " + testMethodDepth + " to be deoptimized");
             } else {
-                Asserts.assertFalse(WB.isFrameDeoptimized(testMethodDepth+1), testCaseName + ": expected test method frame at depth " + testMethodDepth + " not to be deoptimized");
+                Asserts.assertFalse(WB.isFrameDeoptimized(testMethodDepth+1),
+                        testCaseName + ": expected test method frame at depth " + testMethodDepth + " not to be deoptimized");
             }
         }
     }
 
-    public abstract boolean testFrameShouldBeDeoptimized();
+    public boolean testFrameShouldBeDeoptimized() {
+        return DoEscapeAnalysis;
+    }
 
     public void warmupDone() {
         msg(testCaseName + " warmup done.");
@@ -554,7 +605,7 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
     public void checkCompLevel() {
         java.lang.reflect.Method m = null;
         try {
-            m = getClass().getMethod(TESTMETHOD_NAME);
+            m = getClass().getMethod(TESTMETHOD_DEFAULT_NAME);
         } catch (NoSuchMethodException | SecurityException e) {
             Asserts.fail("could not check compilation level of", e);
         }
@@ -595,36 +646,24 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
         System.out.println("###(Target) " + m);
         System.out.println();
     }
-}
 
-/////////////////////////////////////////////////////////////////////////////
-//
-// Base class for debuggee side of test cases that do materialization of
-// scalar replaced objects.
-//
-/////////////////////////////////////////////////////////////////////////////
-
-abstract class EAMaterializeTestCaseBaseTarget extends EATestCaseBaseTarget {
-    @Override
-    public boolean testFrameShouldBeDeoptimized() {
-        return DoEscapeAnalysis && EliminateAllocations;
+    // The object passed will be ArgEscape if it was NoEscape before.
+    public final void dontinline_make_arg_escape(PointXY xy) {
     }
-}
 
-/////////////////////////////////////////////////////////////////////////////
-//
-// Base class for debuggee side of test cases that do
-//
-//    - materialization of scalar replaced objects.
-//
-//    - relocking
-//
-/////////////////////////////////////////////////////////////////////////////
+    public final void dontinline_call_with_entry_frame(Object receiver, String methodName) {
+        Asserts.assertTrue(warmupDone, "We want to take the slow path through jni, so don't call in warmup");
 
-abstract class EAMaterializeRelockingTestCaseBaseTarget extends EATestCaseBaseTarget {
-    @Override
-    public boolean testFrameShouldBeDeoptimized() {
-        return DoEscapeAnalysis && EliminateLocks;
+        Class<?> cls = receiver.getClass();
+        Class<?>[] none = {};
+
+        java.lang.reflect.Method m;
+        try {
+            m = cls.getDeclaredMethod(methodName, none);
+            m.invoke(receiver);
+        } catch (Exception e) {
+            Asserts.fail("Call through reflection failed", e);
+        }
     }
 }
 
@@ -675,7 +714,7 @@ class EAGetWithoutMaterialize extends EATestCaseBaseDebugger {
 //
 // 2. Subsequent modifications of R by J are noticed by the debugger.
 //
-class EAMaterializeLocalVariableUponGetTarget extends EAMaterializeTestCaseBaseTarget {
+class EAMaterializeLocalVariableUponGetTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(4, 2);
@@ -713,7 +752,7 @@ class EAMaterializeLocalVariableUponGet extends EATestCaseBaseDebugger {
 
 /////////////////////////////////////////////////////////////////////////////
 
-class EAMaterializeLocalAtObjectReturnTarget extends EAMaterializeTestCaseBaseTarget {
+class EAMaterializeLocalAtObjectReturnTarget extends EATestCaseBaseTarget {
     @Override
     public void setUp() {
         super.setUp();
@@ -757,7 +796,7 @@ class EAMaterializeLocalAtObjectReturn extends EATestCaseBaseDebugger {
 // the stack frame for rematerialization whereas constants are kept
 // in the debug info of the nmethod.
 
-class EAMaterializeIntArrayTarget extends EAMaterializeTestCaseBaseTarget {
+class EAMaterializeIntArrayTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         int nums[] = {NOT_CONST_1I , 2, 3};
@@ -782,7 +821,7 @@ class EAMaterializeIntArray extends EATestCaseBaseDebugger {
 
 /////////////////////////////////////////////////////////////////////////////
 
-class EAMaterializeLongArrayTarget extends EAMaterializeTestCaseBaseTarget {
+class EAMaterializeLongArrayTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         long nums[] = {NOT_CONST_1L , 2, 3};
@@ -807,7 +846,7 @@ class EAMaterializeLongArray extends EATestCaseBaseDebugger {
 
 /////////////////////////////////////////////////////////////////////////////
 
-class EAMaterializeFloatArrayTarget extends EAMaterializeTestCaseBaseTarget {
+class EAMaterializeFloatArrayTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         float nums[] = {NOT_CONST_1F , 2.2f, 3.3f};
@@ -832,7 +871,7 @@ class EAMaterializeFloatArray extends EATestCaseBaseDebugger {
 
 /////////////////////////////////////////////////////////////////////////////
 
-class EAMaterializeDoubleArrayTarget extends EAMaterializeTestCaseBaseTarget {
+class EAMaterializeDoubleArrayTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         double nums[] = {NOT_CONST_1D , 2.2d, 3.3d};
@@ -857,7 +896,7 @@ class EAMaterializeDoubleArray extends EATestCaseBaseDebugger {
 
 /////////////////////////////////////////////////////////////////////////////
 
-class EAMaterializeObjectArrayTarget extends EAMaterializeTestCaseBaseTarget {
+class EAMaterializeObjectArrayTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         Long nums[] = {NOT_CONST_1_OBJ , CONST_2_OBJ, CONST_3_OBJ};
@@ -881,7 +920,7 @@ class EAMaterializeObjectArray extends EATestCaseBaseDebugger {
                 (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_2_OBJ")),
                 (ObjectReference) clazz.getValue(clazz.fieldByName("CONST_3_OBJ"))
         };
-        checkLocalObjectArray(bpe.thread().frame(1), EAMaterializeTestCaseBaseTarget.TESTMETHOD_NAME, "nums", "java.lang.Long[]", expectedVals);
+        checkLocalObjectArray(bpe.thread().frame(1), EATestCaseBaseTarget.TESTMETHOD_DEFAULT_NAME, "nums", "java.lang.Long[]", expectedVals);
     }
 }
 
@@ -889,7 +928,7 @@ class EAMaterializeObjectArray extends EATestCaseBaseDebugger {
 
 // Materialize an object whose fields have constant and not constant values at
 // the point where the object is materialize.
-class EAMaterializeObjectWithConstantAndNotConstantValuesTarget extends EAMaterializeTestCaseBaseTarget {
+class EAMaterializeObjectWithConstantAndNotConstantValuesTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         ILFDO o = new ILFDO(NOT_CONST_1I, 2,
@@ -936,7 +975,7 @@ class EAMaterializeObjectWithConstantAndNotConstantValues extends EATestCaseBase
 
 // Two local variables reference the same object.
 // Check if the debugger obtains the same object when reading the two variables
-class EAMaterializeObjReferencedBy2LocalsTarget extends EAMaterializeTestCaseBaseTarget {
+class EAMaterializeObjReferencedBy2LocalsTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(2, 3);
@@ -967,7 +1006,7 @@ class EAMaterializeObjReferencedBy2Locals extends EATestCaseBaseDebugger {
 
 // Two local variables reference the same object.
 // Check if it has the expected effect in the target, if the debugger modifies the object.
-class EAMaterializeObjReferencedBy2LocalsAndModifyTarget extends EAMaterializeTestCaseBaseTarget {
+class EAMaterializeObjReferencedBy2LocalsAndModifyTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(2, 3);
@@ -997,7 +1036,13 @@ class EAMaterializeObjReferencedBy2LocalsAndModify extends EATestCaseBaseDebugge
 // Two local variables of the same compiled frame but in different virtual frames reference the same
 // object.
 // Check if the debugger obtains the same object when reading the two variables
-class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesTarget extends EAMaterializeTestCaseBaseTarget {
+class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesTarget extends EATestCaseBaseTarget {
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+    }
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(2, 3);
@@ -1034,7 +1079,13 @@ class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFrames extends EATestCas
 // Two local variables of the same compiled frame but in different virtual frames reference the same
 // object.
 // Check if it has the expected effect in the target, if the debugger modifies the object.
-class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModifyTarget extends EAMaterializeTestCaseBaseTarget {
+class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModifyTarget extends EATestCaseBaseTarget {
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+    }
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(2, 3);
@@ -1068,7 +1119,7 @@ class EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModify extends 
 /////////////////////////////////////////////////////////////////////////////
 
 // Test materialization of an object referenced only from expression stack
-class EAMaterializeObjReferencedFromOperandStackTarget extends EAMaterializeTestCaseBaseTarget {
+class EAMaterializeObjReferencedFromOperandStackTarget extends EATestCaseBaseTarget {
 
     @Override
     public void setUp() {
@@ -1077,6 +1128,7 @@ class EAMaterializeObjReferencedFromOperandStackTarget extends EAMaterializeTest
     }
 
     public void dontinline_testMethod() {
+        @SuppressWarnings("unused")
         PointXY xy1 = new PointXY(2, 3);
         // Debugger breaks in call to dontinline_brkpt_ret_100() and reads
         // the value of the local 'xy1'. This triggers materialization
@@ -1113,7 +1165,7 @@ class EAMaterializeObjReferencedFromOperandStack extends EATestCaseBaseDebugger 
 
 /////////////////////////////////////////////////////////////////////////////
 
-class EARelockingSimpleTarget extends EAMaterializeRelockingTestCaseBaseTarget {
+class EARelockingSimpleTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         PointXY l1 = new PointXY(4, 2);
@@ -1128,6 +1180,7 @@ class EARelockingSimple extends EATestCaseBaseDebugger {
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
+        @SuppressWarnings("unused")
         ObjectReference o = getLocalRef(bpe.thread().frame(1), "PointXY", "l1");
     }
 }
@@ -1135,7 +1188,7 @@ class EARelockingSimple extends EATestCaseBaseDebugger {
 /////////////////////////////////////////////////////////////////////////////
 
 // Test recursive locking
-class EARelockingRecursiveTarget extends EAMaterializeRelockingTestCaseBaseTarget {
+class EARelockingRecursiveTarget extends EATestCaseBaseTarget {
 
     @Override
     public void setUp() {
@@ -1162,19 +1215,27 @@ class EARelockingRecursive extends EATestCaseBaseDebugger {
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
+        @SuppressWarnings("unused")
         ObjectReference o = getLocalRef(bpe.thread().frame(2), "PointXY", "l1");
     }
 }
 
 /////////////////////////////////////////////////////////////////////////////
 
-// Checks if an eliminated nested lock of an inflated monitor can be relocked.
-class EARelockingNestedInflatedTarget extends EAMaterializeRelockingTestCaseBaseTarget {
+//// Checks if an eliminated nested lock of an inflated monitor can be relocked.
+class EARelockingNestedInflatedTarget extends EATestCaseBaseTarget {
 
     @Override
     public void setUp() {
         super.setUp();
         testMethodDepth = 2;
+    }
+
+// TODO: is it really necessary to deoptimize here?
+    @Override
+    public boolean testFrameShouldBeDeoptimized() {
+//        return DoEscapeAnalysis && EliminateLocks;
+        return false;
     }
 
     public void dontinline_testMethod() {
@@ -1185,7 +1246,7 @@ class EARelockingNestedInflatedTarget extends EAMaterializeRelockingTestCaseBase
     }
 
     public void testMethod_inlined(PointXY l2) {
-        synchronized (l2) {
+        synchronized (l2) {                 // eliminated nested locking
             dontinline_brkpt();
         }
     }
@@ -1196,7 +1257,298 @@ class EARelockingNestedInflated extends EATestCaseBaseDebugger {
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         printStack(bpe);
+        @SuppressWarnings("unused")
         ObjectReference o = getLocalRef(bpe.thread().frame(2), "PointXY", "l1");
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Like {@link EARelockingNestedInflated} with the difference that there is
+ * a scalar replaced object in the scope from which the object with eliminated nested locking
+ * is read. This triggers materialization and relocking.
+ */
+class EARelockingNestedInflated_02 extends EATestCaseBaseDebugger {
+    
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        @SuppressWarnings("unused")
+        ObjectReference o = getLocalRef(bpe.thread().frame(2), "PointXY", "l1");
+    }
+}
+
+class EARelockingNestedInflated_02Target extends EATestCaseBaseTarget {
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+    }
+
+    public void dontinline_testMethod() {
+        @SuppressWarnings("unused")
+        PointXY xy = new PointXY(1, 1);     // scalar replaced
+        PointXY l1 = inflatedLock;          // read by debugger
+        synchronized (l1) {
+            testMethod_inlined(l1);
+        }
+    }
+
+    public void testMethod_inlined(PointXY l2) {
+        synchronized (l2) {                 // eliminated nested locking
+            dontinline_brkpt();
+        }
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+// Let xy be NoEscape whose allocation cannot be eliminated. The holding compiled frame has to be
+// deoptimized when debugger accesses xy, because afterwards locking on xy is omitted.
+// Note: there are no EA based optimizations at the escape point.
+
+class EADeoptFrameAfterReadLocalObject_01Target extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(1, 1);
+        dontinline_brkpt();              // Debugger reads xy.
+                                         // There are no virtual objects or eliminated locks.
+        synchronized (xy) {              // Locking is eliminated.
+            xy.x++;
+            xy.y++;
+        }
+    }
+}
+
+class EADeoptFrameAfterReadLocalObject_01 extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        @SuppressWarnings("unused")
+        ObjectReference xy = getLocalRef(bpe.thread().frame(1), "PointXY", "xy");
+        
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Let xy be ArgEscape. The frame dontinline_testMethod() has to be deoptimized when debugger
+ * acquires xy from dontinline_calee(), because afterwards locking on xy is omitted.
+ * Note: there are no EA based optimizations at the escape point.
+ */
+class EADeoptFrameAfterReadLocalObject_02 extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        @SuppressWarnings("unused")
+        ObjectReference xy = getLocalRef(bpe.thread().frame(1), "dontinline_callee", "PointXY", "xy");
+    }
+}
+
+class EADeoptFrameAfterReadLocalObject_02Target extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY xy  = new PointXY(1, 1);
+        dontinline_callee(xy);      // xy is ArgEscape, debugger acquires ref to xy from callee
+        synchronized (xy) {         // Locking is eliminated.
+            xy.x++;
+            xy.y++;
+        }
+    }
+
+    public void dontinline_callee(PointXY xy) {
+        dontinline_brkpt();              // Debugger reads xy.
+                                         // There are no virtual objects or eliminated locks.
+    }
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Similar to {@link EADeoptFrameAfterReadLocalObject_02} with the difference that the debugger
+ * reads xy from an inlined callee. So xy is NoEscape instead of ArgEscape.
+ */
+class EADeoptFrameAfterReadLocalObject_02BTarget extends EATestCaseBaseTarget {
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+    }
+
+    public void dontinline_testMethod() {
+        PointXY xy  = new PointXY(1, 1);
+        callee(xy);                 // Debugger acquires ref to xy from inlined callee
+                                    // xy is NoEscape, nevertheless the object is not replaced
+                                    // by scalars if running with -XX:-EliminateAllocations.
+                                    // In that case there are no EA based optimizations were
+                                    // the debugger reads the NoEscape object.
+        synchronized (xy) {         // Locking is eliminated.
+            xy.x++;
+            xy.y++;
+        }
+    }
+
+    public void callee(PointXY xy) {
+        dontinline_brkpt();              // Debugger reads xy.
+                                         // There are no virtual objects or eliminated locks.
+    }
+}
+
+class EADeoptFrameAfterReadLocalObject_02B extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        @SuppressWarnings("unused")
+        ObjectReference xy = getLocalRef(bpe.thread().frame(1), "callee", "PointXY", "xy");
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Similar to {@link EADeoptFrameAfterReadLocalObject_02} there is an ArgEscape object xy, but in
+ * contrast it is not in the parameter list of a call when the debugger reads an object.
+ * Therefore the frame of the test method should not be deoptimized
+ */
+class EADeoptFrameAfterReadLocalObject_02C extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        @SuppressWarnings("unused")
+        ObjectReference xy = getLocalRef(bpe.thread().frame(1), "dontinline_callee", "PointXY", "xy");
+    }
+}
+
+class EADeoptFrameAfterReadLocalObject_02CTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY xy  = new PointXY(1, 1);
+        dontinline_make_arg_escape(xy);  // because of this call xy is ArgEscape
+        dontinline_callee();             // xy is ArgEscape, but not a parameter of this call
+        synchronized (xy) {              // Locking is eliminated.
+            xy.x++;
+            xy.y++;
+        }
+    }
+
+    public void dontinline_callee() {
+        @SuppressWarnings("unused")
+        PointXY xy  = new PointXY(2, 2);
+        dontinline_brkpt();              // Debugger reads xy.
+                                         // No need to deoptimize the caller frame
+    }
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+    }
+
+    @Override
+    public boolean testFrameShouldBeDeoptimized() {
+        return false;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Similar to {@link EADeoptFrameAfterReadLocalObject_02} there is an ArgEscape object xy in
+ * dontinline_testMethod().  In contrast to {@link EADeoptFrameAfterReadLocalObject_02C} it is being
+ * passed as parameter when the debugger accesses a local object.
+ * Nevertheless dontinline_testMethod must not be deoptimized, because there is an entry frame
+ * beween it and the frame accessed by the debugger.
+ */
+class EADeoptFrameAfterReadLocalObject_02D extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        @SuppressWarnings("unused")
+        ObjectReference xy = getLocalRef(bpe.thread().frame(1), "dontinline_callee_accessed_by_debugger", "PointXY", "xy");
+    }
+}
+
+class EADeoptFrameAfterReadLocalObject_02DTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY xy  = new PointXY(1, 1);
+        dontinline_callee(xy);           // xy is ArgEscape and being passed as parameter
+        synchronized (xy) {              // Locking is eliminated.
+            xy.x++;
+            xy.y++;
+        }
+    }
+
+    public void dontinline_callee(PointXY xy) {
+        if (warmupDone) { // TODO: crashes if doing call during warmup
+            dontinline_call_with_entry_frame(this, "dontinline_callee_accessed_by_debugger");
+        }
+    }
+
+    public void dontinline_callee_accessed_by_debugger() {
+        @SuppressWarnings("unused")
+        PointXY xy  = new PointXY(2, 2);
+        dontinline_brkpt();              // Debugger reads xy.
+                                         // No need to deoptimize the caller frame
+    }
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 8;
+    }
+
+    @Override
+    public boolean testFrameShouldBeDeoptimized() {
+        return false;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Let xy be NoEscape whose allocation cannot be eliminated (e.g. because of
+ * -XX:-EliminateAllocations).  The holding compiled frame has to be deoptimized when debugger
+ * accesses xy, because the following field accesses get eliminated.  Note: there are no EA based
+ * optimizations at the escape point.
+ */
+class EADeoptFrameAfterReadLocalObject_03Target extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(0, 1);
+        dontinline_brkpt();              // Debugger reads xy.
+                                         // There are no virtual objects or eliminated locks.
+        iResult = xy.x + xy.y;           // Loads are replaced by constants 0 and 1.
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 1 + 1;
+    }
+}
+
+class EADeoptFrameAfterReadLocalObject_03 extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        ObjectReference xy = getLocalRef(bpe.thread().frame(1), "PointXY", "xy");
+        setField(xy, FD.I, "x", env.vm().mirrorOf(1));
     }
 }
 

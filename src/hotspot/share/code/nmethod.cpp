@@ -436,9 +436,6 @@ void nmethod::init_defaults() {
   _oops_do_mark_link       = NULL;
   _jmethod_id              = NULL;
   _osr_link                = NULL;
-  _optimized_because_of_no_escapes = 0;
-  _eliminated_sync_on_arg_escapes  = 0;
-  _eliminated_sync_on_non_escapes  = 0;
 #if INCLUDE_RTM_OPT
   _rtm_state               = NoRTM;
 #endif
@@ -492,10 +489,7 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
   ExceptionHandlerTable* handler_table,
   ImplicitExceptionTable* nul_chk_table,
   AbstractCompiler* compiler,
-  int comp_level,
-  bool optimized_because_of_no_escapes,
-  bool eliminated_sync_on_arg_escapes,
-  bool eliminated_sync_on_non_escapes
+  int comp_level
 #if INCLUDE_JVMCI
   , char* speculations,
   int speculations_len,
@@ -532,10 +526,7 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
             handler_table,
             nul_chk_table,
             compiler,
-            comp_level,
-            optimized_because_of_no_escapes,
-            eliminated_sync_on_arg_escapes,
-            eliminated_sync_on_non_escapes
+            comp_level
 #if INCLUDE_JVMCI
             , speculations,
             speculations_len,
@@ -705,10 +696,7 @@ nmethod::nmethod(
   ExceptionHandlerTable* handler_table,
   ImplicitExceptionTable* nul_chk_table,
   AbstractCompiler* compiler,
-  int comp_level,
-  bool optimized_because_of_no_escapes,
-  bool eliminated_sync_on_arg_escapes,
-  bool eliminated_sync_on_non_escapes
+  int comp_level
 #if INCLUDE_JVMCI
   , char* speculations,
   int speculations_len,
@@ -832,10 +820,6 @@ nmethod::nmethod(
     assert(compiler->is_c2() || compiler->is_jvmci() ||
            _method->is_static() == (entry_point() == _verified_entry_point),
            " entry points must be same for static methods and vice versa");
-
-    set_optimized_because_of_no_escapes(optimized_because_of_no_escapes);
-    set_eliminated_sync_on_arg_escapes(eliminated_sync_on_arg_escapes);
-    set_eliminated_sync_on_non_escapes(eliminated_sync_on_non_escapes);
   }
 }
 
@@ -2207,9 +2191,7 @@ void nmethod::verify_interrupt_point(address call_site) {
 
   PcDesc* pd = pc_desc_at(nativeCall_at(call_site)->return_address());
   assert(pd != NULL, "PcDesc must exist");
-  for (ScopeDesc* sd = new ScopeDesc(this, pd->scope_decode_offset(),
-                                     pd->obj_decode_offset(), pd->should_reexecute(), pd->rethrow_exception(),
-                                     pd->return_oop());
+  for (ScopeDesc* sd = new ScopeDesc(this, pd);
        !sd->is_top(); sd = sd->sender()) {
     sd->verify();
   }
@@ -2526,9 +2508,7 @@ const char* nmethod::reloc_string_for(u_char* begin, u_char* end) {
 ScopeDesc* nmethod::scope_desc_in(address begin, address end) {
   PcDesc* p = pc_desc_near(begin+1);
   if (p != NULL && p->real_pc(this) <= end) {
-    return new ScopeDesc(this, p->scope_decode_offset(),
-                         p->obj_decode_offset(), p->should_reexecute(), p->rethrow_exception(),
-                         p->return_oop());
+    return new ScopeDesc(this, p);
   }
   return NULL;
 }

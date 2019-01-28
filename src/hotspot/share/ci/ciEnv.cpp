@@ -965,10 +965,7 @@ void ciEnv::register_method(ciMethod* target,
                             AbstractCompiler* compiler,
                             bool has_unsafe_access,
                             bool has_wide_vectors,
-                            RTMState  rtm_state,
-                            bool optimized_because_of_no_escapes,
-                            bool eliminated_sync_on_arg_escapes,
-                            bool eliminated_sync_on_non_escapes) {
+                            RTMState  rtm_state) {
   VM_ENTRY_MARK;
   nmethod* nm = NULL;
   {
@@ -1043,10 +1040,7 @@ void ciEnv::register_method(ciMethod* target,
                                debug_info(), dependencies(), code_buffer,
                                frame_words, oop_map_set,
                                handler_table, inc_table,
-                               compiler, task()->comp_level(),
-                               optimized_because_of_no_escapes,
-                               eliminated_sync_on_arg_escapes,
-                               eliminated_sync_on_non_escapes);
+                               compiler, task()->comp_level());
 
     // Free codeBlobs
     code_buffer->free_blob();

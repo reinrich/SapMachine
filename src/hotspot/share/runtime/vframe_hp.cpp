@@ -311,6 +311,26 @@ bool compiledVFrame::should_reexecute() const {
   return scope()->should_reexecute();
 }
 
+bool compiledVFrame::not_global_escape_in_scope() const {
+  if (scope() == NULL) {
+    // native nmethod, all objs escape
+    nmethod* nm = code()->as_nmethod();
+    assert(nm->is_native_method(), "must be native");
+    return false;
+  }
+  return scope()->not_global_escape_in_scope();
+}
+
+bool compiledVFrame::arg_escape() const {
+  if (scope() == NULL) {
+    // native nmethod, all objs escape
+    nmethod* nm = code()->as_nmethod();
+    assert(nm->is_native_method(), "must be native");
+    return false;
+  }
+  return scope()->arg_escape();
+}
+
 vframe* compiledVFrame::sender() const {
   const frame f = fr();
   if (scope() == NULL) {

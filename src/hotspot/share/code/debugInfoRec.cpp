@@ -287,6 +287,8 @@ void DebugInformationRecorder::describe_scope(int         pc_offset,
                                               bool        rethrow_exception,
                                               bool        is_method_handle_invoke,
                                               bool        return_oop,
+                                              bool        not_global_escape_in_scope,
+                                              bool        arg_escape,
                                               DebugToken* locals,
                                               DebugToken* expressions,
                                               DebugToken* monitors) {
@@ -303,6 +305,8 @@ void DebugInformationRecorder::describe_scope(int         pc_offset,
   last_pd->set_rethrow_exception(rethrow_exception);
   last_pd->set_is_method_handle_invoke(is_method_handle_invoke);
   last_pd->set_return_oop(return_oop);
+  last_pd->set_not_global_escape_in_scope(not_global_escape_in_scope);
+  last_pd->set_arg_escape(arg_escape);
 
   // serialize sender stream offest
   stream()->write_int(sender_stream_offset);

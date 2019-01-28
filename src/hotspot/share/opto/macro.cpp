@@ -34,7 +34,6 @@
 #include "opto/cfgnode.hpp"
 #include "opto/compile.hpp"
 #include "opto/convertnode.hpp"
-#include "opto/escape.hpp"
 #include "opto/graphKit.hpp"
 #include "opto/locknode.hpp"
 #include "opto/loopnode.hpp"
@@ -2054,25 +2053,6 @@ bool PhaseMacroExpand::eliminate_locking_node(AbstractLockNode *alock) {
     }
   }
 #endif
-
-  // Check if non escaping objects escape their compiled frame (i.e. if their
-  // escape state is ArgEscape).
-  // Note: alock->is_non_esc_obj() is true, if the object does not escape the thread
-  if (alock->is_non_esc_obj() &&
-      (!C->eliminated_sync_on_arg_escapes() || !C->eliminated_sync_on_non_escapes()
-       || PrintEliminateLocks)) {
-    assert(C->congraph(), "discovery of non escaping objects requires a connection graph");
-    assert(C->congraph()->not_global_escape(alock->obj_node()), "sanity");
-    // is_non_escape() means it does not escape the frame (PointsToNode::NoEscape),
-    // so if it *does* escape the frame the object must be PointsToNode::ArgEscape
-    if (C->congraph()->is_non_escape(alock->obj_node())) {
-      NOT_PRODUCT(if (PrintEliminateLocks) tty->print_cr("++++++ obj is NoEscape"));
-      C->set_eliminated_sync_on_non_escapes(true);
-    } else {
-      NOT_PRODUCT(if (PrintEliminateLocks) tty->print_cr("++++++ obj is ArgEscape"));
-      C->set_eliminated_sync_on_arg_escapes(true);
-    }
-  }
 
   Node* mem  = alock->in(TypeFunc::Memory);
   Node* ctrl = alock->in(TypeFunc::Control);

@@ -664,9 +664,6 @@ Compile::Compile( ciEnv* ci_env, C2Compiler* compiler, ciMethod* target, int osr
 #ifndef PRODUCT
                   _printer(IdealGraphPrinter::printer()),
 #endif
-                  _optimized_because_of_no_escapes(false),
-                  _eliminated_sync_on_arg_escapes(false),
-                  _eliminated_sync_on_non_escapes(false),
                   _dead_node_list(comp_arena()),
                   _dead_node_count(0),
                   _node_arena(mtCompiler),
@@ -948,10 +945,7 @@ Compile::Compile( ciEnv* ci_env, C2Compiler* compiler, ciMethod* target, int osr
                            compiler,
                            has_unsafe_access(),
                            SharedRuntime::is_wide_vector(max_vector_size()),
-                           rtm_state(),
-                           optimized_because_of_no_escapes(),
-                           eliminated_sync_on_arg_escapes(),
-                           eliminated_sync_on_non_escapes()
+                           rtm_state()
                            );
 
     if (log() != NULL) // Print code cache state into compiler log
@@ -1000,9 +994,6 @@ Compile::Compile( ciEnv* ci_env,
 #ifndef PRODUCT
     _printer(NULL),
 #endif
-    _optimized_because_of_no_escapes(false),
-    _eliminated_sync_on_arg_escapes(false),
-    _eliminated_sync_on_non_escapes(false),
     _dead_node_list(comp_arena()),
     _dead_node_count(0),
     _node_arena(mtCompiler),

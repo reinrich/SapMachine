@@ -37,6 +37,8 @@ class compiledVFrame: public javaVFrame {
   StackValueCollection*        expressions()        const;
   GrowableArray<MonitorInfo*>* monitors()           const;
   int                          vframe_id()          const { return _vframe_id; }
+  bool                         not_global_escape_in_scope() const;
+  bool                         arg_escape()         const; // at call with arg escape in parameter list
 
   void set_locals(StackValueCollection* values) const;
 
