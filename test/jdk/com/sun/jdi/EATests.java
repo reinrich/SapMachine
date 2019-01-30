@@ -159,8 +159,8 @@ class EATestsTarget {
         // locks nor allocations are eliminated at the point where
         // escape state is changed.
         new EADeoptFrameAfterReadLocalObject_01Target().run();
+        new EADeoptFrameAfterReadLocalObject_01BTarget().run();
         new EADeoptFrameAfterReadLocalObject_02Target().run();
-        new EADeoptFrameAfterReadLocalObject_02BTarget().run();
         new EADeoptFrameAfterReadLocalObject_02CTarget().run();
         new EADeoptFrameAfterReadLocalObject_02DTarget().run();
         new EADeoptFrameAfterReadLocalObject_03Target().run();
@@ -220,8 +220,8 @@ public class EATests extends TestScaffold {
         // locks nor allocations are eliminated at the point where
         // escape state is changed.
         new EADeoptFrameAfterReadLocalObject_01().setScaffold(this).run();
+        new EADeoptFrameAfterReadLocalObject_01B().setScaffold(this).run();
         new EADeoptFrameAfterReadLocalObject_02().setScaffold(this).run();
-        new EADeoptFrameAfterReadLocalObject_02B().setScaffold(this).run();
         new EADeoptFrameAfterReadLocalObject_02C().setScaffold(this).run();
         new EADeoptFrameAfterReadLocalObject_02D().setScaffold(this).run();
         new EADeoptFrameAfterReadLocalObject_03().setScaffold(this).run();
@@ -1305,23 +1305,12 @@ class EARelockingNestedInflated_02Target extends EATestCaseBaseTarget {
 
 /////////////////////////////////////////////////////////////////////////////
 
-// Let xy be NoEscape whose allocation cannot be eliminated. The holding compiled frame has to be
-// deoptimized when debugger accesses xy, because afterwards locking on xy is omitted.
-// Note: there are no EA based optimizations at the escape point.
-
-class EADeoptFrameAfterReadLocalObject_01Target extends EATestCaseBaseTarget {
-
-    public void dontinline_testMethod() {
-        PointXY xy = new PointXY(1, 1);
-        dontinline_brkpt();              // Debugger reads xy.
-                                         // There are no virtual objects or eliminated locks.
-        synchronized (xy) {              // Locking is eliminated.
-            xy.x++;
-            xy.y++;
-        }
-    }
-}
-
+/**
+ * Let xy be NoEscape whose allocation cannot be eliminated (simulated by
+ * -XX:-EliminateAllocations). The holding compiled frame has to be deoptimized when debugger
+ * accesses xy, because afterwards locking on xy is omitted.
+ * Note: there are no EA based optimizations at the escape point.
+ */
 class EADeoptFrameAfterReadLocalObject_01 extends EATestCaseBaseDebugger {
 
     public void runTestCase() throws Exception {
@@ -1330,6 +1319,61 @@ class EADeoptFrameAfterReadLocalObject_01 extends EATestCaseBaseDebugger {
         @SuppressWarnings("unused")
         ObjectReference xy = getLocalRef(bpe.thread().frame(1), "PointXY", "xy");
         
+    }
+}
+
+class EADeoptFrameAfterReadLocalObject_01Target extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(1, 1);
+        dontinline_brkpt();              // Debugger reads xy, when there are no virtual objects or eliminated locks in scope
+        synchronized (xy) {              // Locking is eliminated.
+            xy.x++;
+            xy.y++;
+        }
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Similar to {@link EADeoptFrameAfterReadLocalObject_01} with the difference that the debugger
+ * reads xy from an inlined callee. So xy is NoEscape instead of ArgEscape.
+ */
+class EADeoptFrameAfterReadLocalObject_01BTarget extends EATestCaseBaseTarget {
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+    }
+
+    public void dontinline_testMethod() {
+        PointXY xy  = new PointXY(1, 1);
+        callee(xy);                 // Debugger acquires ref to xy from inlined callee
+                                    // xy is NoEscape, nevertheless the object is not replaced
+                                    // by scalars if running with -XX:-EliminateAllocations.
+                                    // In that case there are no EA based optimizations were
+                                    // the debugger reads the NoEscape object.
+        synchronized (xy) {         // Locking is eliminated.
+            xy.x++;
+            xy.y++;
+        }
+    }
+
+    public void callee(PointXY xy) {
+        dontinline_brkpt();              // Debugger reads xy.
+                                         // There are no virtual objects or eliminated locks.
+    }
+}
+
+class EADeoptFrameAfterReadLocalObject_01B extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        @SuppressWarnings("unused")
+        ObjectReference xy = getLocalRef(bpe.thread().frame(1), "callee", "PointXY", "xy");
     }
 }
 
@@ -1370,49 +1414,6 @@ class EADeoptFrameAfterReadLocalObject_02Target extends EATestCaseBaseTarget {
     public void setUp() {
         super.setUp();
         testMethodDepth = 2;
-    }
-}
-
-/////////////////////////////////////////////////////////////////////////////
-
-/**
- * Similar to {@link EADeoptFrameAfterReadLocalObject_02} with the difference that the debugger
- * reads xy from an inlined callee. So xy is NoEscape instead of ArgEscape.
- */
-class EADeoptFrameAfterReadLocalObject_02BTarget extends EATestCaseBaseTarget {
-
-    @Override
-    public void setUp() {
-        super.setUp();
-        testMethodDepth = 2;
-    }
-
-    public void dontinline_testMethod() {
-        PointXY xy  = new PointXY(1, 1);
-        callee(xy);                 // Debugger acquires ref to xy from inlined callee
-                                    // xy is NoEscape, nevertheless the object is not replaced
-                                    // by scalars if running with -XX:-EliminateAllocations.
-                                    // In that case there are no EA based optimizations were
-                                    // the debugger reads the NoEscape object.
-        synchronized (xy) {         // Locking is eliminated.
-            xy.x++;
-            xy.y++;
-        }
-    }
-
-    public void callee(PointXY xy) {
-        dontinline_brkpt();              // Debugger reads xy.
-                                         // There are no virtual objects or eliminated locks.
-    }
-}
-
-class EADeoptFrameAfterReadLocalObject_02B extends EATestCaseBaseDebugger {
-
-    public void runTestCase() throws Exception {
-        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
-        printStack(bpe);
-        @SuppressWarnings("unused")
-        ObjectReference xy = getLocalRef(bpe.thread().frame(1), "callee", "PointXY", "xy");
     }
 }
 
@@ -1468,10 +1469,9 @@ class EADeoptFrameAfterReadLocalObject_02CTarget extends EATestCaseBaseTarget {
 
 /**
  * Similar to {@link EADeoptFrameAfterReadLocalObject_02} there is an ArgEscape object xy in
- * dontinline_testMethod().  In contrast to {@link EADeoptFrameAfterReadLocalObject_02C} it is being
- * passed as parameter when the debugger accesses a local object.
+ * dontinline_testMethod() which is being passed as parameter when the debugger accesses a local object.
  * Nevertheless dontinline_testMethod must not be deoptimized, because there is an entry frame
- * beween it and the frame accessed by the debugger.
+ * between it and the frame accessed by the debugger.
  */
 class EADeoptFrameAfterReadLocalObject_02D extends EATestCaseBaseDebugger {
 
@@ -1527,21 +1527,6 @@ class EADeoptFrameAfterReadLocalObject_02DTarget extends EATestCaseBaseTarget {
  * accesses xy, because the following field accesses get eliminated.  Note: there are no EA based
  * optimizations at the escape point.
  */
-class EADeoptFrameAfterReadLocalObject_03Target extends EATestCaseBaseTarget {
-
-    public void dontinline_testMethod() {
-        PointXY xy = new PointXY(0, 1);
-        dontinline_brkpt();              // Debugger reads xy.
-                                         // There are no virtual objects or eliminated locks.
-        iResult = xy.x + xy.y;           // Loads are replaced by constants 0 and 1.
-    }
-
-    @Override
-    public int getExpectedIResult() {
-        return 1 + 1;
-    }
-}
-
 class EADeoptFrameAfterReadLocalObject_03 extends EATestCaseBaseDebugger {
 
     public void runTestCase() throws Exception {
@@ -1549,6 +1534,20 @@ class EADeoptFrameAfterReadLocalObject_03 extends EATestCaseBaseDebugger {
         printStack(bpe);
         ObjectReference xy = getLocalRef(bpe.thread().frame(1), "PointXY", "xy");
         setField(xy, FD.I, "x", env.vm().mirrorOf(1));
+    }
+}
+
+class EADeoptFrameAfterReadLocalObject_03Target extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(0, 1);
+        dontinline_brkpt();              // Debugger reads xy, when there are no virtual objects or eliminated locks in scope
+        iResult = xy.x + xy.y;           // Loads are replaced by constants 0 and 1.
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 1 + 1;
     }
 }
 
