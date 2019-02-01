@@ -237,6 +237,48 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
     JavaThread* thread = JavaThread::current();
     Thread* THREAD = thread;
     bool dummy;
+
+    // Find owners of locks that are eliminated because of escape state but not because of
+    // nesting. Revoke the bias if they potentially were passed to the callee frame (if any).  We do
+    // this here, because eliminated locks are omitted when revoking biases during frame
+    // deoptimization above.
+    if (UseBiasedLocking && last_cvf->arg_escape()) {
+      GrowableArray<oop>* arg_esc_owners = new GrowableArray<oop>(); // typically small
+      for (int i = 0; i < vfs->length(); i++) {
+        GrowableArray<MonitorInfo*>* monitors = vfs->at(i)->monitors();
+        for (int j = 0; j < monitors->length(); j++) {
+          MonitorInfo* mon_info = monitors->at(j);
+          oop owner = mon_info->owner();
+          if (owner != NULL) {
+            if (mon_info->eliminated()) {
+              markOop mark = owner->mark();
+              if (mark->has_bias_pattern() && mark->biased_locker() == deoptee_thread
+                  && !arg_esc_owners->contains(owner)) {
+                arg_esc_owners->push(owner);
+              }
+            } else {
+              // not eliminated: remove owner if added because of nested locks
+              if (arg_esc_owners->length() > 0) {
+                oop top = arg_esc_owners->pop();
+                if (top != owner) {
+                  int idx = arg_esc_owners->find(owner);
+                  arg_esc_owners->at_put(idx, top); // replace owner with top
+                }
+              }
+            }
+          }
+        }
+      }
+      if (arg_esc_owners->length() > 0) {
+        GrowableArray<Handle>* obj_to_revoke = new GrowableArray<Handle>(arg_esc_owners->length());
+        for (int i = 0; i < arg_esc_owners->length(); ++i) {
+          Handle obj(thread, arg_esc_owners->at(i));
+          obj_to_revoke->append(obj);
+        }
+        BiasedLocking::revoke(obj_to_revoke);
+      }
+    }
+
     bool deoptimized_objects = Deoptimization::deoptimize_objects_work(thread, vfs, dummy, Unpack_none, CHECK_AND_CLEAR_false);
     if (deoptimized_objects) {
       // now do the updates
@@ -399,7 +441,7 @@ bool Deoptimization::deoptimize_objects_work(JavaThread* thread, GrowableArray<c
         assert (cvf->scope() != NULL,"expect only compiled java frames");
         GrowableArray<MonitorInfo*>* monitors = cvf->monitors();
         if (monitors->is_nonempty()) {
-          bool relocked = relock_objects(thread, monitors, deoptee_thread, realloc_failures);
+          bool relocked = relock_objects(thread, monitors, deoptee_thread, &deoptee, exec_mode, realloc_failures);
           deoptimized_objects = deoptimized_objects || relocked;
 #ifndef PRODUCT
           if (PrintDeoptimizationDetails) {
@@ -1305,7 +1347,8 @@ void Deoptimization::reassign_fields(frame* fr, RegisterMap* reg_map, GrowableAr
 
 
 // relock objects for which synchronization was eliminated
-bool Deoptimization::relock_objects(JavaThread* thread, GrowableArray<MonitorInfo*>* monitors, JavaThread* deoptee_thread, bool realloc_failures) {
+bool Deoptimization::relock_objects(JavaThread* thread, GrowableArray<MonitorInfo*>* monitors,
+                                    JavaThread* deoptee_thread, frame* fr, int exec_mode, bool realloc_failures) {
   //TODO
   bool relocked_objects = false;
   for (int i = 0; i < monitors->length(); i++) {
@@ -1316,6 +1359,7 @@ bool Deoptimization::relock_objects(JavaThread* thread, GrowableArray<MonitorInf
       if (!mon_info->owner_is_scalar_replaced()) {
         Handle obj(thread, mon_info->owner());
         markOop mark = obj->mark();
+        BasicLock* lock = mon_info->lock();
         if (UseBiasedLocking && mark->has_bias_pattern()) {
           // New allocated objects may have the mark set to anonymously biased.
           // Also the deoptimized method may called methods with synchronization
@@ -1325,8 +1369,14 @@ bool Deoptimization::relock_objects(JavaThread* thread, GrowableArray<MonitorInf
           // Reset mark word to unbiased prototype.
           markOop unbiased_prototype = markOopDesc::prototype()->set_age(mark->age());
           obj->set_mark(unbiased_prototype);
+        } else if (exec_mode == Unpack_none && mark->has_locker() && fr->sp() > (intptr_t*)mark->locker()) {
+          // With exec_mode == Unpack_none obj may be thread local and locked in
+          // a callee frame. In this case the bias was revoked before.
+          // Make the lock in the callee a recursive lock and restore the displaced header.
+          markOop dmw = mark->displaced_mark_helper();
+          mark->locker()->set_displaced_header(NULL);
+          obj->set_mark(dmw);
         }
-        BasicLock* lock = mon_info->lock();
         ObjectSynchronizer::slow_enter(obj, lock, deoptee_thread);
         assert(mon_info->owner()->is_locked(), "object must be locked now");
       }

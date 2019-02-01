@@ -154,6 +154,7 @@ class EATestsTarget {
         new EARelockingRecursiveTarget()             .run();
         new EARelockingNestedInflatedTarget()        .run();
         new EARelockingNestedInflated_02Target()     .run();
+        new EARelockingArgEscapeLWLockedInCalleeFrameTarget().run();
 
         // Test cases that require deoptimization even though neither
         // locks nor allocations are eliminated at the point where
@@ -215,6 +216,7 @@ public class EATests extends TestScaffold {
         new EARelockingRecursive()             .setScaffold(this).run();
         new EARelockingNestedInflated()        .setScaffold(this).run();
         new EARelockingNestedInflated_02()     .setScaffold(this).run();
+        new EARelockingArgEscapeLWLockedInCalleeFrame().setScaffold(this).run();
 
         // Test cases that require deoptimization even though neither
         // locks nor allocations are eliminated at the point where
@@ -1269,6 +1271,7 @@ class EARelockingNestedInflated extends EATestCaseBaseDebugger {
  * a scalar replaced object in the scope from which the object with eliminated nested locking
  * is read. This triggers materialization and relocking.
  */
+// TODO: remove the test, because it merely tests a property of the implementation.
 class EARelockingNestedInflated_02 extends EATestCaseBaseDebugger {
     
     public void runTestCase() throws Exception {
@@ -1299,6 +1302,38 @@ class EARelockingNestedInflated_02Target extends EATestCaseBaseTarget {
     public void testMethod_inlined(PointXY l2) {
         synchronized (l2) {                 // eliminated nested locking
             dontinline_brkpt();
+        }
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Checks if an eliminated lock of an ArgEscape object l1 can be relocked if
+ * l1 is locked in a callee frame.
+ */
+class EARelockingArgEscapeLWLockedInCalleeFrame extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        @SuppressWarnings("unused")
+        ObjectReference o = getLocalRef(bpe.thread().frame(2), "PointXY", "l1");
+    }
+}
+
+class EARelockingArgEscapeLWLockedInCalleeFrameTarget extends EATestCaseBaseTarget {
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+    }
+
+    public void dontinline_testMethod() {
+        PointXY l1 = new PointXY(1, 1);       // ArgEscape
+        synchronized (l1) {                   // eliminated
+            l1.dontinline_sync_method(this);  // l1 escapes
         }
     }
 }
@@ -1564,6 +1599,16 @@ class PointXY {
     public PointXY(int x, int y) {
         this.x = x;
         this.y = y;
+    }
+
+    /**
+     * Note that we don't use a sync block here, because javac would generate an synthetic exception
+     * handler for the synchronized block that catches Throwable E, unlocks and throws E
+     * again. The throw bytecode causes the BCEscapeAnalyzer to set the escape state to GlobalEscape
+     * (see comment on exception handlers in BCEscapeAnalyzer::iterate_blocks())
+     */
+    public synchronized void dontinline_sync_method(EATestCaseBaseTarget target) {
+        target.dontinline_brkpt();
     }
 }
 
