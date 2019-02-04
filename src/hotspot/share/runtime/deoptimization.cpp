@@ -194,13 +194,28 @@ bool Deoptimization::deoptimize_objects(compiledVFrame* cvf) {
 // Returns false upon failure, true otherwise.
 bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, JavaThread* deoptee_thread) {
   MutexLocker ml(JvmtiObjReallocRelock_lock);
-  compiledVFrame* last_cvf = compiledVFrame::cast(vframe::new_vframe(fr, reg_map, deoptee_thread));
 
   assert(DoEscapeAnalysis, "call only to revert optimizations based on DoEscapeAnalysis");
   assert(!Thread::current()->is_VM_thread(), "the VM thread cannot reallocate stack objects to the Java heap");
   assert(fr->is_compiled_frame(), "only compiled frames can contain stack allocated objects");
 
   if (!objs_are_deoptimized(fr, deoptee_thread)) {
+    // Execution must not continue in the compiled method, so we deoptimize the frame.
+    // As a side effect all locking biases will be removed which makes relocking
+    // of eliminated nested locks easier.
+    compiledVFrame* last_cvf = compiledVFrame::cast(vframe::new_vframe(fr, reg_map, deoptee_thread));
+    if (!fr->is_deoptimized_frame()) {
+      deoptimize_frame(deoptee_thread, fr->id());
+
+      // the frame fr is stale after the deoptimization, we have to fetch it again
+      StackFrameStream fst(deoptee_thread);
+      while (fst.current()->id() != fr->id() && !fst.is_done()) {
+        fst.next();
+      }
+      assert(fst.current()->id() == fr->id(), "frame not found after deoptimization");
+      last_cvf = compiledVFrame::cast(vframe::new_vframe(fst.current(), fst.register_map(), deoptee_thread));
+    }
+
     // collect inlined frames
     compiledVFrame* cvf = last_cvf;
     GrowableArray<compiledVFrame*>* vfs = new GrowableArray<compiledVFrame*>(10);
@@ -210,28 +225,6 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
     }
     vfs->push(cvf);
     assert(vfs->at(0)->not_global_escape_in_scope(), "should not call");
-
-    // Execution must not continue in the compiled method, so we deoptimize the frame.
-    // As a side effect all locking biases will be removed which makes relocking
-    // of eliminated nested locks easier.
-    if (!fr->is_deoptimized_frame()) {
-      deoptimize_frame(deoptee_thread, fr->id());
-
-      // the frames in vfs are stale after the deoptimization, we have to fetch them again
-      StackFrameStream fst(deoptee_thread);
-      while (fst.current()->id() != fr->id() && !fst.is_done()) {
-        fst.next();
-      }
-      assert(fst.current()->id() == fr->id(), "frame not found after deoptimization");
-      // collect inlined frames
-      cvf = compiledVFrame::cast(vframe::new_vframe(fst.current(), reg_map, deoptee_thread));;
-      vfs = new GrowableArray<compiledVFrame*>(10);
-      while (!cvf->is_top()) {
-        vfs->push(cvf);
-        cvf = compiledVFrame::cast(cvf->sender());
-      }
-      vfs->push(cvf);
-    }
 
     // reallocate and relock optimized objects
     JavaThread* thread = JavaThread::current();
