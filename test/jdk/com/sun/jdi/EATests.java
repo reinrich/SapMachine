@@ -1576,7 +1576,8 @@ class EADeoptFrameAfterReadLocalObject_03Target extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(0, 1);
-        dontinline_brkpt();              // Debugger reads xy, when there are no virtual objects or eliminated locks in scope
+        dontinline_brkpt();              // Debugger reads xy, when there are no virtual objects or
+                                         // eliminated locks in scope and modifies xy.x
         iResult = xy.x + xy.y;           // Loads are replaced by constants 0 and 1.
     }
 
