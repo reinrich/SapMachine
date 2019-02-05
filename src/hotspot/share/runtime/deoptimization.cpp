@@ -194,6 +194,7 @@ bool Deoptimization::deoptimize_objects(compiledVFrame* cvf) {
 // Returns false upon failure, true otherwise.
 bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, JavaThread* deoptee_thread) {
   MutexLocker ml(JvmtiObjReallocRelock_lock);
+  bool realloc_failures = false;
 
   assert(DoEscapeAnalysis, "call only to revert optimizations based on DoEscapeAnalysis");
   assert(!Thread::current()->is_VM_thread(), "the VM thread cannot reallocate stack objects to the Java heap");
@@ -229,7 +230,6 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
     // reallocate and relock optimized objects
     JavaThread* thread = JavaThread::current();
     Thread* THREAD = thread;
-    bool dummy;
 
     // Find owners of locks that are eliminated because of escape state but not because of
     // nesting. Revoke the bias if they potentially were passed to the callee frame (if any).  We do
@@ -272,7 +272,8 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
       }
     }
 
-    bool deoptimized_objects = Deoptimization::deoptimize_objects_work(thread, vfs, dummy, Unpack_none, CHECK_AND_CLEAR_false);
+
+    bool deoptimized_objects = Deoptimization::deoptimize_objects_work(thread, vfs, realloc_failures, Unpack_none, CHECK_AND_CLEAR_false);
     if (deoptimized_objects) {
       // now do the updates
       for (int frame_index = 0; frame_index < vfs->length(); frame_index++) {
@@ -320,7 +321,7 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
       assert(objs_are_deoptimized(fr, deoptee_thread), "sanity");
     }
   }
-  return true; // no error occurred
+  return !realloc_failures;
 }
 
 
