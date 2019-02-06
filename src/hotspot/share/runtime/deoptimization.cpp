@@ -227,10 +227,6 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
     vfs->push(cvf);
     assert(vfs->at(0)->not_global_escape_in_scope(), "should not call");
 
-    // reallocate and relock optimized objects
-    JavaThread* thread = JavaThread::current();
-    Thread* THREAD = thread;
-
     // Find owners of locks that are eliminated because of escape state but not because of
     // nesting. Revoke the bias if they potentially were passed to the callee frame (if any).  We do
     // this here, because eliminated locks are omitted when revoking biases during frame
@@ -263,6 +259,7 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
         }
       }
       if (arg_esc_owners->length() > 0) {
+        JavaThread* thread = JavaThread::current();
         GrowableArray<Handle>* obj_to_revoke = new GrowableArray<Handle>(arg_esc_owners->length());
         for (int i = 0; i < arg_esc_owners->length(); ++i) {
           Handle obj(thread, arg_esc_owners->at(i));
@@ -273,8 +270,9 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
     }
 
 
-    bool deoptimized_objects = Deoptimization::deoptimize_objects_work(thread, vfs, realloc_failures, Unpack_none, CHECK_AND_CLEAR_false);
-    if (deoptimized_objects) {
+    // reallocate and relock optimized objects
+    bool deoptimized_objects = Deoptimization::deoptimize_objects_work(JavaThread::current(), vfs, realloc_failures, Unpack_none);
+    if (!realloc_failures && deoptimized_objects) {
       // now do the updates
       for (int frame_index = 0; frame_index < vfs->length(); frame_index++) {
         cvf = vfs->at(frame_index);
@@ -347,7 +345,7 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
 // again. This is necessary for correctness, because if we would just reallocate
 // again, then we would end up with 2 or more clones of the same object, but
 // there _must_ be only one.
-bool Deoptimization::deoptimize_objects_work(JavaThread* thread, GrowableArray<compiledVFrame*>* chunk, bool& realloc_failures, int exec_mode, TRAPS) {
+bool Deoptimization::deoptimize_objects_work(JavaThread* thread, GrowableArray<compiledVFrame*>* chunk, bool& realloc_failures, int exec_mode) {
   bool deoptimized_objects = false;
 
   // frame that is either in the process of being deoptimized or whose objects are deoptimized
@@ -392,10 +390,9 @@ bool Deoptimization::deoptimize_objects_work(JavaThread* thread, GrowableArray<c
       if (objects != NULL) {
         if (exec_mode == Unpack_none) {
           assert(thread->thread_state() == _thread_in_vm, "assumption");
-          realloc_failures = realloc_objects(thread, &deoptee, objects, exec_mode, THREAD);
-          if (realloc_failures) {
-            return false; // objects were not successfully deoptimized
-          }
+          Thread* THREAD = thread;
+          // Clear pending OOM if reallocation fails and return false, i.e. no objects deoptimized.
+          realloc_failures = realloc_objects(thread, &deoptee, objects, exec_mode, CHECK_AND_CLEAR_false);
         } else {
           JRT_BLOCK
             realloc_failures = realloc_objects(thread, &deoptee, objects, exec_mode, THREAD);
@@ -526,7 +523,7 @@ Deoptimization::UnrollBlock* Deoptimization::fetch_unroll_info_helper(JavaThread
 
     if (!objs_are_deoptimized(&deoptee, thread)) {
       // objects are not yet deoptimized, do it now
-      deoptimize_objects_work(thread, chunk, realloc_failures, exec_mode, thread);
+      deoptimize_objects_work(thread, chunk, realloc_failures, exec_mode);
     } else {
       // objects have been deoptimized already for JVMTI access
       if (TraceDeoptimization) {
@@ -1074,7 +1071,7 @@ bool Deoptimization::realloc_objects(JavaThread* thread, frame* fr, GrowableArra
     sv->set_value(obj);
   }
 
-  if (failures && exec_mode != Unpack_none) {
+  if (failures) {
     THROW_OOP_(Universe::out_of_memory_error_realloc_objects(), failures);
   } else if (pending_exception.not_null()) {
     thread->set_pending_exception(pending_exception(), exception_file, exception_line);
