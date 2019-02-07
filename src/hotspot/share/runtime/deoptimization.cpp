@@ -227,51 +227,35 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
     vfs->push(cvf);
     assert(vfs->at(0)->not_global_escape_in_scope(), "should not call");
 
-    // Find owners of locks that are eliminated because of escape state but not because of
-    // nesting. Revoke the bias if they potentially were passed to the callee frame (if any).  We do
-    // this here, because eliminated locks are omitted when revoking biases during frame
-    // deoptimization above.
+    // With the exception of not escaping owners biases where revoked when the deoptimization of fr
+    // was requested. Among the non escaping owners of eliminated locks might be some that are still
+    // locked in callee frames. We need their biases revoked and do it here, because we cannot
+    // safepoint in relock_objects(). Note that the markword of such an owner will then point to a
+    // callee frame. This will be fixed in relock_objects().
+    JavaThread* thread = JavaThread::current();
     if (UseBiasedLocking && last_cvf->arg_escape()) {
-      GrowableArray<oop>* arg_esc_owners = new GrowableArray<oop>(); // typically small
+      GrowableArray<Handle>* arg_esc_owners = new GrowableArray<Handle>();
       for (int i = 0; i < vfs->length(); i++) {
         GrowableArray<MonitorInfo*>* monitors = vfs->at(i)->monitors();
         for (int j = 0; j < monitors->length(); j++) {
           MonitorInfo* mon_info = monitors->at(j);
           oop owner = mon_info->owner();
-          if (owner != NULL) {
-            if (mon_info->eliminated()) {
-              markOop mark = owner->mark();
-              if (mark->has_bias_pattern() && mark->biased_locker() == deoptee_thread
-                  && !arg_esc_owners->contains(owner)) {
-                arg_esc_owners->push(owner);
-              }
-            } else {
-              // not eliminated: remove owner if added because of nested locks
-              if (arg_esc_owners->length() > 0) {
-                oop top = arg_esc_owners->pop();
-                if (top != owner) {
-                  int idx = arg_esc_owners->find(owner);
-                  arg_esc_owners->at_put(idx, top); // replace owner with top
-                }
-              }
+          if (mon_info->eliminated() && owner != NULL) {
+            markOop mark = owner->mark();
+            if (mark->has_bias_pattern() && !mark->is_biased_anonymously()) {
+              assert(mark->biased_locker() == deoptee_thread, "not escaping object can only be biased to current thread");
+              arg_esc_owners->push(Handle(thread, owner));
             }
           }
         }
       }
       if (arg_esc_owners->length() > 0) {
-        JavaThread* thread = JavaThread::current();
-        GrowableArray<Handle>* obj_to_revoke = new GrowableArray<Handle>(arg_esc_owners->length());
-        for (int i = 0; i < arg_esc_owners->length(); ++i) {
-          Handle obj(thread, arg_esc_owners->at(i));
-          obj_to_revoke->append(obj);
-        }
-        BiasedLocking::revoke(obj_to_revoke);
+        BiasedLocking::revoke(arg_esc_owners);
       }
     }
 
-
     // reallocate and relock optimized objects
-    bool deoptimized_objects = Deoptimization::deoptimize_objects_work(JavaThread::current(), vfs, realloc_failures, Unpack_none);
+    bool deoptimized_objects = Deoptimization::deoptimize_objects_work(thread, vfs, realloc_failures, Unpack_none);
     if (!realloc_failures && deoptimized_objects) {
       // now do the updates
       for (int frame_index = 0; frame_index < vfs->length(); frame_index++) {
