@@ -113,6 +113,7 @@ private:
   intptr_t* _id;
   int _vframe_id;
   GrowableArray<jvmtiDeferredLocalVariable*>* _locals;
+  bool _objects_are_deoptimized;
 
   void                              update_value(StackValueCollection* locals, BasicType type, int index, jvalue value);
 
@@ -124,15 +125,17 @@ private:
   int                               bci()            const  { return _bci; }
   intptr_t*                         id()             const  { return _id; }
   int                               vframe_id()      const  { return _vframe_id; }
+  bool                              objects_are_deoptimized() const { return _objects_are_deoptimized; }
 
   void                              update_locals(StackValueCollection* locals);
   void                              update_stack(StackValueCollection* locals);
   void                              update_monitors(GrowableArray<MonitorInfo*>* monitors);
+  void                              set_objs_are_deoptimized() { _objects_are_deoptimized = true; }
 
   // Does the vframe match this jvmtiDeferredLocalVariableSet
   bool                              matches(const vframe* vf);
   // Does the underlying physical frame match this jvmtiDeferredLocalVariableSet
-  bool                              matches(const frame* f) { return id() == f->id(); }
+  bool                              matches(intptr_t* fr_id) { return id() == fr_id; }
   // GC
   void                              oops_do(OopClosure* f);
 

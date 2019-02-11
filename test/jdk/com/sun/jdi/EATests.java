@@ -148,6 +148,7 @@ class EATestsTarget {
         new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesTarget().run();
         new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModifyTarget().run();
         new EAMaterializeObjReferencedFromOperandStackTarget().run();
+        new EAMaterializeLocalVariableUponGetAfterSetIntegerTarget().run();
 
         // Relocking test cases
         new EARelockingSimpleTarget()                .run();
@@ -210,6 +211,7 @@ public class EATests extends TestScaffold {
         new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFrames().setScaffold(this).run();
         new EAMaterializeObjReferencedBy2LocalsInDifferentVirtFramesAndModify().setScaffold(this).run();
         new EAMaterializeObjReferencedFromOperandStack().setScaffold(this).run();
+        new EAMaterializeLocalVariableUponGetAfterSetInteger().setScaffold(this).run();
 
         // Relocking test cases
         new EARelockingSimple()                .setScaffold(this).run();
@@ -420,11 +422,29 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
                 Asserts.assertNotNull(lVal);
                 Asserts.assertEQ(lType, lVal.type().name());
                 lRef = (ObjectReference) lVal;
+                break;
             }
         }
         Asserts.assertNotNull(lRef, "Local variable '" + lName + "' not found");
         msg("OK.");
         return lRef;
+    }
+
+    public void setLocal(StackFrame frame, String lName, Value val) throws Exception {
+        setLocal(frame, EATestCaseBaseTarget.TESTMETHOD_DEFAULT_NAME, lName, val);
+    }
+
+    public void setLocal(StackFrame frame, String expectedMethodName, String lName, Value val) throws Exception {
+        Asserts.assertEQ(expectedMethodName, frame.location().method().name());
+        List<LocalVariable> localVars = frame.visibleVariables();
+        msg("Set local variable '" + lName + "' = " + val + " in " + expectedMethodName);
+        for (LocalVariable lv : localVars) {
+            if (lv.name().equals(lName)) {
+                frame.setValue(lv, val);
+                break;
+            }
+        }
+        msg("OK.");
     }
 
     protected void checkField(ObjectReference o, FD desc, String fName, Object expVal) throws Exception {
@@ -1165,6 +1185,50 @@ class EAMaterializeObjReferencedFromOperandStack extends EATestCaseBaseDebugger 
 
 }
 
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Tests a regression in the implementation by setting the value of a local int which triggers the
+ * creation of a deferred update and then getting the reference to a scalar replaced object.  The
+ * issue was that the scalar replaced object was not reallocated. Because of the deferred update it
+ * was assumed that the reallocation already happened.
+ */
+class EAMaterializeLocalVariableUponGetAfterSetInteger extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        printStack(bpe);
+        setLocal(bpe.thread().frame(1), "i", env.vm().mirrorOf(43));
+        ObjectReference o = getLocalRef(bpe.thread().frame(1), "PointXY", "xy");
+        checkField(o, FD.I, "x", 4);
+        checkField(o, FD.I, "y", 2);
+    }
+}
+
+class EAMaterializeLocalVariableUponGetAfterSetIntegerTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(4, 2);
+        int i = 42;
+        dontinline_brkpt();
+        iResult = xy.x + xy.y + i;
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 4 + 2 + 43;
+    }
+
+    @Override
+    public boolean testFrameShouldBeDeoptimized() {
+        return true; // setting local variable i triggers always deoptimization
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Locking Tests 
+//
 /////////////////////////////////////////////////////////////////////////////
 
 class EARelockingSimpleTarget extends EATestCaseBaseTarget {

@@ -134,20 +134,36 @@ void Deoptimization::UnrollBlock::print() {
 
 
 // Returns true iff objects were reallocated and relocked because of access through JVMTI
-// TODO: correct? What if an int local was updated? Write test!
-bool Deoptimization::objs_are_deoptimized(frame* fr, JavaThread* thread) {
+bool Deoptimization::objs_are_deoptimized(intptr_t* fr_id, JavaThread* thread) {
+  // first/oldest update holds the flag
   GrowableArray<jvmtiDeferredLocalVariableSet*>* list = thread->deferred_locals();
   bool result = false;
   if (list != NULL ) {
-    // In real life this never happens or is typically a single element search
     for (int i = 0; i < list->length(); i++) {
-      if (list->at(i)->matches(fr)) {
-        result = true;
+      if (list->at(i)->matches(fr_id)) {
+        result = list->at(i)->objects_are_deoptimized();
         break;
       }
     }
   }
   return result;
+}
+
+// Remember that objects were reallocated for the compiled frame with the given id
+void Deoptimization::set_objs_are_deoptimized(intptr_t* fr_id, JavaThread* thread) {
+  // set in first/oldest update
+  GrowableArray<jvmtiDeferredLocalVariableSet*>* list = thread->deferred_locals();
+  DEBUG_ONLY(bool found = false);
+  if (list != NULL ) {
+    for (int i = 0; i < list->length(); i++) {
+      if (list->at(i)->matches(fr_id)) {
+        DEBUG_ONLY(found = true);
+        list->at(i)->set_objs_are_deoptimized();
+        break;
+      }
+    }
+  }
+  assert(found, "variable set should exist at least for one vframe");
 }
 
 
@@ -200,7 +216,7 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
   assert(!Thread::current()->is_VM_thread(), "the VM thread cannot reallocate stack objects to the Java heap");
   assert(fr->is_compiled_frame(), "only compiled frames can contain stack allocated objects");
 
-  if (!objs_are_deoptimized(fr, deoptee_thread)) {
+  if (!objs_are_deoptimized(fr->id(), deoptee_thread)) {
     // Execution must not continue in the compiled method, so we deoptimize the frame.
     // As a side effect all locking biases will be removed which makes relocking
     // of eliminated nested locks easier.
@@ -300,7 +316,7 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
           }
         }
       }
-      assert(objs_are_deoptimized(fr, deoptee_thread), "sanity");
+      set_objs_are_deoptimized(fr->id(), deoptee_thread);
     }
   }
   return !realloc_failures;
@@ -338,7 +354,7 @@ bool Deoptimization::deoptimize_objects_work(JavaThread* thread, GrowableArray<c
   JavaThread* deoptee_thread = chunk->at(0)->thread();
   RegisterMap map = *chunk->at(0)->register_map();
 
-  assert(!objs_are_deoptimized(&deoptee, deoptee_thread), "must relock just once");
+  assert(!objs_are_deoptimized(deoptee.id(), deoptee_thread), "must relock just once");
   assert(exec_mode == Unpack_none || (deoptee_thread == thread), "a frame can only be deoptimized by the owner thread");
 
 #if !INCLUDE_JVMCI
@@ -381,7 +397,7 @@ bool Deoptimization::deoptimize_objects_work(JavaThread* thread, GrowableArray<c
           JRT_BLOCK
             realloc_failures = realloc_objects(thread, &deoptee, objects, exec_mode, THREAD);
           JRT_BLOCK_END
-          if (objs_are_deoptimized(&deoptee, deoptee_thread)) {
+          if (objs_are_deoptimized(deoptee.id(), deoptee_thread)) {
             // A concurrent JVMTI agent thread stop the current thread in the JRT_BLOCK above
             // and deoptimized its objects
             realloc_failures = false; // ignore realloc failures if any occurred
@@ -505,7 +521,7 @@ Deoptimization::UnrollBlock* Deoptimization::fetch_unroll_info_helper(JavaThread
   if (DoEscapeAnalysis || EliminateNestedLocks) {
 #endif // INCLUDE_JVMCI
 
-    if (!objs_are_deoptimized(&deoptee, thread)) {
+    if (!objs_are_deoptimized(deoptee.id(), thread)) {
       // objects are not yet deoptimized, do it now
       deoptimize_objects_work(thread, chunk, realloc_failures, exec_mode);
     } else {

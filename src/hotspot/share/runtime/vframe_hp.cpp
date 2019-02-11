@@ -102,7 +102,6 @@ void compiledVFrame::update_monitor(int index, MonitorInfo* val) {
 }
 
 void compiledVFrame::update_deferred_value(BasicType type, int index, jvalue value) {
-  // TODO: must deopt objects when registering deferred updates
   assert(fr().is_deoptimized_frame() || thread()->must_deopt_id() == fr().id(),
          "frame must be scheduled for deoptimization");
   GrowableArray<jvmtiDeferredLocalVariableSet*>* deferred = thread()->deferred_locals();
@@ -352,6 +351,7 @@ jvmtiDeferredLocalVariableSet::jvmtiDeferredLocalVariableSet(Method* method, int
   _vframe_id = vframe_id;
   // Alway will need at least one, must be on C heap
   _locals = new(ResourceObj::C_HEAP, mtCompiler) GrowableArray<jvmtiDeferredLocalVariable*> (1, true);
+  _objects_are_deoptimized = false;
 }
 
 jvmtiDeferredLocalVariableSet::~jvmtiDeferredLocalVariableSet() {

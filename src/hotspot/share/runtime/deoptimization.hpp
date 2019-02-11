@@ -173,7 +173,9 @@ JVMCI_ONLY(public:)
   // agents. deoptimizing_frame == true indicates case (a). Returns false if reallocation fails.
   static bool deoptimize_objects_work(JavaThread* thread, GrowableArray<compiledVFrame*>* chunk, bool& realloc_failures, int exec_mode);
   // Returns true iff objects were reallocated and relocked because of access through JVMTI
-  static bool objs_are_deoptimized(frame* fr, JavaThread* thread);
+  static bool objs_are_deoptimized(intptr_t* fr_id, JavaThread* thread);
+  // Remember that objects were reallocated and relocked for the compiled frame with the given id
+  static void set_objs_are_deoptimized(intptr_t* fr_id, JavaThread* thread);
 
 COMPILER2_PRESENT(public:)
   // Relallocates and relocks objects in the given compiled frame to make them accessible through JVMTI
