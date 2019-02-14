@@ -343,10 +343,12 @@
 #define COMPILER2_OR_JVMCI 1
 #define COMPILER2_OR_JVMCI_PRESENT(code) code
 #define NOT_COMPILER2_OR_JVMCI(code)
+#define NOT_COMPILER2_OR_JVMCI_RETURN_(code) /* next token must be ; */
 #else
 #define COMPILER2_OR_JVMCI 0
 #define COMPILER2_OR_JVMCI_PRESENT(code)
 #define NOT_COMPILER2_OR_JVMCI(code) code
+#define NOT_COMPILER2_OR_JVMCI_RETURN_(code) { return code; }
 #endif
 
 #ifdef TIERED

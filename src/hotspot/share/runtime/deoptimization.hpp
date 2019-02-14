@@ -157,6 +157,15 @@ class Deoptimization : AllStatic {
   static void revoke_biases_of_monitors(JavaThread* thread, frame fr, RegisterMap* map);
 
 #if COMPILER2_OR_JVMCI
+  // Reallocate scalar replaced objects and relock objects either (a) to replace the owning compiled
+  // frame with corresponding interpreter frames or (b) to make them accessible for JVMTI
+  // agents. deoptimizing_frame == true indicates case (a). Returns false if reallocation fails.
+  static bool deoptimize_objects_work(JavaThread* thread, GrowableArray<compiledVFrame*>* chunk, bool& realloc_failures, int exec_mode);
+  // Returns true iff objects were reallocated and relocked because of access through JVMTI
+  static bool objs_are_deoptimized(intptr_t* fr_id, JavaThread* thread);
+  // Remember that objects were reallocated and relocked for the compiled frame with the given id
+  static void set_objs_are_deoptimized(intptr_t* fr_id, JavaThread* thread);
+
 JVMCI_ONLY(public:)
 
   // Support for restoring non-escaping objects
@@ -168,22 +177,14 @@ JVMCI_ONLY(public:)
                              JavaThread* deoptee_thread, frame* fr, int exec_mode, bool realloc_failures);
   static void pop_frames_failed_reallocs(JavaThread* thread, vframeArray* array);
   NOT_PRODUCT(static void print_objects(GrowableArray<ScopeValue*>* objects, bool realloc_failures);)
-  // Reallocate scalar replaced objects and relock objects either (a) to replace the owning compiled
-  // frame with corresponding interpreter frames or (b) to make them accessible for JVMTI
-  // agents. deoptimizing_frame == true indicates case (a). Returns false if reallocation fails.
-  static bool deoptimize_objects_work(JavaThread* thread, GrowableArray<compiledVFrame*>* chunk, bool& realloc_failures, int exec_mode);
-  // Returns true iff objects were reallocated and relocked because of access through JVMTI
-  static bool objs_are_deoptimized(intptr_t* fr_id, JavaThread* thread);
-  // Remember that objects were reallocated and relocked for the compiled frame with the given id
-  static void set_objs_are_deoptimized(intptr_t* fr_id, JavaThread* thread);
-
-COMPILER2_PRESENT(public:)
-  // Relallocates and relocks objects in the given compiled frame to make them accessible through JVMTI
-  static bool deoptimize_objects(frame* fr, const RegisterMap *reg_map, JavaThread* deoptee_thread);
-  static bool deoptimize_objects(compiledVFrame* cvf);
 #endif // COMPILER2_OR_JVMCI
 
   public:
+  // Relallocates and relocks objects in the given compiled frame to make them accessible through JVMTI
+  static bool deoptimize_objects(frame* fr, const RegisterMap *reg_map, JavaThread* deoptee_thread); NOT_COMPILER2_OR_JVMCI_RETURN_(true);
+  static bool deoptimize_objects(compiledVFrame* cvf)                                                NOT_COMPILER2_OR_JVMCI_RETURN_(true);
+  static bool deoptimize_objects(intptr_t* fr_id, JavaThread* deoptee_thread)                        NOT_COMPILER2_OR_JVMCI_RETURN_(true);
+
   static vframeArray* create_vframeArray(JavaThread* thread, frame fr, RegisterMap *reg_map, GrowableArray<compiledVFrame*>* chunk, bool realloc_failures);
 
   // Interface used for unpacking deoptimized frames

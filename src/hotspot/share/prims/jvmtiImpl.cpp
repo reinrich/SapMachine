@@ -735,9 +735,9 @@ static bool can_be_deoptimized(vframe* vf) {
   return (vf->is_compiled_frame() && vf->fr().can_be_deoptimized());
 }
 
-#if COMPILER2_OR_JVMCI
 bool VM_GetOrSetLocal::deoptimize_objects(javaVFrame* jvf) {
-  if (DoEscapeAnalysis && _type == T_OBJECT) {
+#if COMPILER2_OR_JVMCI
+  if (NOT_JVMCI(DoEscapeAnalysis &&) _type == T_OBJECT) {
     if (can_be_deoptimized(jvf)) {
       compiledVFrame* cf = compiledVFrame::cast(jvf);
       if (cf->not_global_escape_in_scope() && !Deoptimization::deoptimize_objects(cf)) {
@@ -773,9 +773,9 @@ bool VM_GetOrSetLocal::deoptimize_objects(javaVFrame* jvf) {
       }
     } while(vf != NULL && !vf->is_entry_frame());
   }
+#endif // COMPILER2_OR_JVMCI
   return true;
 }
-#endif // COMPILER2_OR_JVMCI
 
 bool VM_GetOrSetLocal::doit_prologue() {
   _jvf = get_java_vframe();

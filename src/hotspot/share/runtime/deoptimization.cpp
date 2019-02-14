@@ -133,6 +133,32 @@ void Deoptimization::UnrollBlock::print() {
 }
 
 
+// In order to make fetch_unroll_info work properly with escape
+// analysis, The method was changed from JRT_LEAF to JRT_BLOCK_ENTRY and
+// ResetNoHandleMark and HandleMark were removed from it. The actual reallocation
+// of previously eliminated objects occurs in realloc_objects, which is
+// called from the method fetch_unroll_info_helper below.
+JRT_BLOCK_ENTRY(Deoptimization::UnrollBlock*, Deoptimization::fetch_unroll_info(JavaThread* thread, int exec_mode))
+  // It is actually ok to allocate handles in a leaf method. It causes no safepoints,
+  // but makes the entry a little slower. There is however a little dance we have to
+  // do in debug mode to get around the NoHandleMark code in the JRT_LEAF macro
+
+  // fetch_unroll_info() is called at the beginning of the deoptimization
+  // handler. Note this fact before we start generating temporary frames
+  // that can confuse an asynchronous stack walker. This counter is
+  // decremented at the end of unpack_frames().
+  if (TraceDeoptimization) {
+    tty->print_cr("Deoptimizing thread " INTPTR_FORMAT, p2i(thread));
+  }
+  thread->inc_in_deopt_handler();
+
+  return fetch_unroll_info_helper(thread, exec_mode);
+JRT_END
+
+
+
+
+#if COMPILER2_OR_JVMCI
 // Returns true iff objects were reallocated and relocked because of access through JVMTI
 bool Deoptimization::objs_are_deoptimized(intptr_t* fr_id, JavaThread* thread) {
   // first/oldest update holds the flag
@@ -166,36 +192,20 @@ void Deoptimization::set_objs_are_deoptimized(intptr_t* fr_id, JavaThread* threa
   assert(found, "variable set should exist at least for one vframe");
 }
 
-
-// In order to make fetch_unroll_info work properly with escape
-// analysis, The method was changed from JRT_LEAF to JRT_BLOCK_ENTRY and
-// ResetNoHandleMark and HandleMark were removed from it. The actual reallocation
-// of previously eliminated objects occurs in realloc_objects, which is
-// called from the method fetch_unroll_info_helper below.
-JRT_BLOCK_ENTRY(Deoptimization::UnrollBlock*, Deoptimization::fetch_unroll_info(JavaThread* thread, int exec_mode))
-  // It is actually ok to allocate handles in a leaf method. It causes no safepoints,
-  // but makes the entry a little slower. There is however a little dance we have to
-  // do in debug mode to get around the NoHandleMark code in the JRT_LEAF macro
-
-  // fetch_unroll_info() is called at the beginning of the deoptimization
-  // handler. Note this fact before we start generating temporary frames
-  // that can confuse an asynchronous stack walker. This counter is
-  // decremented at the end of unpack_frames().
-  if (TraceDeoptimization) {
-    tty->print_cr("Deoptimizing thread " INTPTR_FORMAT, p2i(thread));
-  }
-  thread->inc_in_deopt_handler();
-
-  return fetch_unroll_info_helper(thread, exec_mode);
-JRT_END
-
-
-
-
-#if COMPILER2_OR_JVMCI
 bool Deoptimization::deoptimize_objects(compiledVFrame* cvf) {
   frame f = cvf->fr();
   return deoptimize_objects(&f, cvf->register_map(), cvf->thread());
+}
+
+
+bool Deoptimization::deoptimize_objects(intptr_t* fr_id, JavaThread* deoptee_thread) {
+  // Compute frame and register map based on thread and sp.
+  RegisterMap reg_map(deoptee_thread);
+  frame fr = deoptee_thread->last_frame();
+  while (fr.id() != fr_id) {
+    fr = fr.sender(&reg_map);
+  }
+  return Deoptimization::deoptimize_objects(&fr, &reg_map, deoptee_thread);
 }
 
 
@@ -212,9 +222,9 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
   MutexLocker ml(JvmtiObjReallocRelock_lock);
   bool realloc_failures = false;
 
-  assert(DoEscapeAnalysis, "call only to revert optimizations based on DoEscapeAnalysis");
   assert(!Thread::current()->is_VM_thread(), "the VM thread cannot reallocate stack objects to the Java heap");
   assert(fr->is_compiled_frame(), "only compiled frames can contain stack allocated objects");
+  assert(reg_map->update_map(), "e.g. for values in callee saved registers");
 
   if (!objs_are_deoptimized(fr->id(), deoptee_thread)) {
     // Execution must not continue in the compiled method, so we deoptimize the frame.
@@ -241,7 +251,6 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
       cvf = compiledVFrame::cast(cvf->sender());
     }
     vfs->push(cvf);
-    assert(vfs->at(0)->not_global_escape_in_scope(), "should not call");
 
     // With the exception of not escaping owners biases where revoked when the deoptimization of fr
     // was requested. Among the non escaping owners of eliminated locks might be some that are still
