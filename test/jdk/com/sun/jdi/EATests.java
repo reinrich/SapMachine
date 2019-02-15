@@ -2161,17 +2161,19 @@ class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailureTa
     public boolean looping;
 
     public void dontinline_testMethod() {
-        PointXY xy = new PointXY(4, 2);
-        int i = inlinedCallForcedToReturn();
-        iResult = xy.x + xy.y + i;
+        long a[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};                // scalar replaced
+        Vector10 v = new Vector10(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);  // scalar replaced
+        long l = inlinedCallForcedToReturn();
+        lResult = a[0] + a[1] + a[2] + a[3] + a[4] + a[5] + a[6] + a[7] + a[8] + a[9]
+               + v.i0 + v.i1 + v.i2 + v.i3 + v.i4 + v.i5 + v.i6 + v.i7 + v.i8 + v.i9 + l;
     }
 
-    public int inlinedCallForcedToReturn() {               // forced to return 43
-        int i = checkSum;
+    public long inlinedCallForcedToReturn() {                      // forced to return 43
+        long cs = checkSum;
         dontinline_consumeAllMemory();
         while (loopCount-- > 0) {
             looping = true;
-            checkSum += checkSum % ++i;
+            checkSum += checkSum % ++cs;
         }
         loopCount = 3;
         looping = false;
@@ -2185,8 +2187,9 @@ class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailureTa
     }
 
     @Override
-    public int getExpectedIResult() {
-        return 4 + 2 + 43;
+    public long getExpectedLResult() {
+        long n = 10;
+        return 2*n*(n+1)/2 + 43;
     }
 
     @Override
@@ -2200,10 +2203,6 @@ class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailureTa
         super.warmupDone();
         msg("enter 'endless' loop by setting loopCount = 1L << 60");
         loopCount = 1L << 60; // endless loop
-    }
-
-    public boolean testFrameShouldBeDeoptimized() {
-        return true; // because of stepping
     }
 }
 
