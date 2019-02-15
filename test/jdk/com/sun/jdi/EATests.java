@@ -172,6 +172,10 @@ class EATestsTarget {
         // PopFrame test cases
         new EAPopFrameNotInlinedTarget().run();
         new EAPopFrameNotInlinedReallocFailureTarget().run();
+
+        // ForceEarlyReturn test cases
+        new EAForceEarlyReturnNotInlinedTarget().run();
+
     }
 }
 
@@ -213,7 +217,7 @@ public class EATests extends TestScaffold {
         }
 
     }
-    
+
     // Execute known test cases
     protected void runTests() throws Exception {
         String targetProgName = EATestsTarget.class.getName();
@@ -262,6 +266,9 @@ public class EATests extends TestScaffold {
         // PopFrame test cases
         new EAPopFrameNotInlined().setScaffold(this).run();
         new EAPopFrameNotInlinedReallocFailure().setScaffold(this).run();
+
+        // ForceEarlyReturn test cases
+        new EAForceEarlyReturnNotInlined().setScaffold(this).run();
 
         // resume the target listening for events
         listenUntilVMDisconnect();
@@ -630,6 +637,11 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
     }
 
     public abstract void dontinline_testMethod();
+
+    public int dontinline_brkpt_iret() {
+        dontinline_brkpt();
+        return 42;
+    }
 
     public void dontinline_brkpt() {
         // will set breakpoint here after warmup
@@ -1752,8 +1764,8 @@ class EAPopFrameNotInlinedTarget extends EATestCaseBaseTarget {
 
     @Override
     public boolean testFrameShouldBeDeoptimized() {
-        // Not when the breakpoint is hit in dontinline_brkpt.
-        // The 2nd time dontinline_testMethod is interpreted
+        // Test is only performed after the frame pop.
+        // Then dontinline_testMethod is interpreted.
         return false;
     }
 
@@ -1833,6 +1845,64 @@ class EAPopFrameNotInlinedReallocFailureTarget extends EATestCaseBaseTarget {
     public long getExpectedLResult() {
         long n = 10;
         return 2*n*(n+1)/2;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// ForceEarlyReturn tests
+//
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * ForceEarlyReturn into caller frame with scalar replaced objects.
+ */
+class EAForceEarlyReturnNotInlined extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
+        ThreadReference thread = bpe.thread();
+        printStack(thread);
+        // frame[0]: EATestCaseBaseTarget.dontinline_brkpt()
+        // frame[1]: EATestCaseBaseTarget.dontinline_brkpt_iret()
+        // frame[2]: EAForceEarlyReturnNotInlinedTarget.dontinline_testMethod()
+        // frame[3]: EATestCaseBaseTarget.run()
+        // frame[4]: EATestsTarget.main(java.lang.String[])
+
+        msg("Step out");
+        env.stepOut(thread);                               // return from dontinline_brkpt
+        printStack(thread);
+        msg("ForceEarlyReturn");
+        thread.forceEarlyReturn(env.vm().mirrorOf(43));    // return from dontinline_brkpt_iret,
+                                                           // does not trigger reallocation in contrast to PopFrame
+        msg("Step over line");
+        env.stepOverLine(thread);                          // reallocation is triggered here
+        printStack(thread);
+        msg("ForceEarlyReturn DONE");
+    }
+}
+
+class EAForceEarlyReturnNotInlinedTarget extends EATestCaseBaseTarget {
+
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(4, 2);
+        int i = dontinline_brkpt_iret();
+        iResult = xy.x + xy.y + i;
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 4 + 2 + 43;
+    }
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+    }
+
+    public boolean testFrameShouldBeDeoptimized() {
+        return true; // because of stepping
     }
 }
 
