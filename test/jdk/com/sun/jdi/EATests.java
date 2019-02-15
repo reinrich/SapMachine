@@ -175,6 +175,8 @@ class EATestsTarget {
 
         // ForceEarlyReturn test cases
         new EAForceEarlyReturnNotInlinedTarget().run();
+        new EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsTarget().run();
+        new EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailureTarget().run();
 
     }
 }
@@ -188,6 +190,7 @@ class EATestsTarget {
 public class EATests extends TestScaffold {
 
     public TargetVMOptions targetVMOptions;
+    public ThreadReference targetMainThread;
 
     EATests(String args[]) {
         super(args);
@@ -224,10 +227,11 @@ public class EATests extends TestScaffold {
         msg("starting to main method in class " +  targetProgName);
         startToMain(targetProgName);
         msg("resuming to EATestCaseBaseTarget.staticSetUpDone()V");
-        StackFrame curFrame = resumeTo("EATestCaseBaseTarget", "staticSetUpDone", "()V").thread().frame(0);
-        Asserts.assertEQ("staticSetUpDone", curFrame.location().method().name());
+        targetMainThread = resumeTo("EATestCaseBaseTarget", "staticSetUpDone", "()V").thread();
+        Location loc = targetMainThread.frame(0).location();
+        Asserts.assertEQ("staticSetUpDone", loc.method().name());
 
-        targetVMOptions = TargetVMOptions.get(this, curFrame.location().declaringType());
+        targetVMOptions = TargetVMOptions.get(this, loc.declaringType());
 
         // Materializing test cases
         new EAMaterializeLocalVariableUponGet().setScaffold(this).run();
@@ -269,6 +273,8 @@ public class EATests extends TestScaffold {
 
         // ForceEarlyReturn test cases
         new EAForceEarlyReturnNotInlined().setScaffold(this).run();
+        new EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjects().setScaffold(this).run();
+        new EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailure().setScaffold(this).run();
 
         // resume the target listening for events
         listenUntilVMDisconnect();
@@ -514,7 +520,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         msg("ok");
     }
 
-    protected Value getField(ObjectReference o, FD desc, String fName) throws Exception {
+    protected Value getField(ObjectReference o, String fName) throws Exception {
         msg("get field " + fName);
         ReferenceType rt = o.referenceType();
         Field fld = rt.fieldByName(fName);
@@ -1899,6 +1905,195 @@ class EAForceEarlyReturnNotInlinedTarget extends EATestCaseBaseTarget {
     public void setUp() {
         super.setUp();
         testMethodDepth = 2;
+    }
+
+    public boolean testFrameShouldBeDeoptimized() {
+        return true; // because of stepping
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * ForceEarlyReturn at safepoint in frame with scalar replaced objects.
+ */
+class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjects extends EATestCaseBaseDebugger {
+
+    public ObjectReference testCase;
+
+    public void runTestCase() throws Exception {
+        ThreadReference thread = env.targetMainThread;
+        testCase = thread.frame(0).thisObject();
+        thread.resume();
+        while(!targetHasEnteredLoop()) {
+            msg("Target has not yet entered the loop. Sleep 100ms;");
+            try { Thread.sleep(100); } catch (InterruptedException e) { /*ignore */ }
+        }
+
+        thread.suspend();
+        printStack(thread);
+        // frame[0]: EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsTarget.inlinedCallForcedToReturn()
+        // frame[1]: EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsTarget.dontinline_testMethod()
+        // frame[2]: EATestCaseBaseTarget.run()
+
+        msg("ForceEarlyReturn");
+        thread.forceEarlyReturn(env.vm().mirrorOf(43));    // Request force return 43 from inlinedCallForcedToReturn()
+                                                           // reallocation is triggered here
+        msg("Step over instruction to do the forced return");
+        env.stepOverInstruction(thread);
+        printStack(thread);
+        msg("ForceEarlyReturn DONE");
+    }
+
+    public boolean targetHasEnteredLoop() throws Exception {
+        Value v = getField(testCase, "looping");
+        return ((PrimitiveValue) v).booleanValue();
+    }
+}
+
+class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsTarget extends EATestCaseBaseTarget {
+
+    public long loopCount;
+    public int checkSum;
+    public boolean looping;
+
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(4, 2);
+        int i = inlinedCallForcedToReturn();
+        iResult = xy.x + xy.y + i;
+    }
+
+    public int inlinedCallForcedToReturn() {               // forced to return 43
+        int i = checkSum;
+        while (loopCount-- > 0) {
+            looping = true;
+            checkSum += checkSum % ++i;
+        }
+        loopCount = 3;
+        looping = false;
+        return checkSum;
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 4 + 2 + 43;
+    }
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+        loopCount = 3;
+    }
+
+    public void warmupDone() {
+        super.warmupDone();
+        msg("enter 'endless' loop by setting loopCount = 1L << 60");
+        loopCount = 1L << 60; // endless loop
+    }
+
+    public boolean testFrameShouldBeDeoptimized() {
+        return true; // because of stepping
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * ForceEarlyReturn with reallocation failure.
+ */
+class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailure extends EATestCaseBaseDebugger {
+
+    public ObjectReference testCase;
+
+    public void runTestCase() throws Exception {
+        ThreadReference thread = env.targetMainThread;
+        testCase = thread.frame(0).thisObject();
+        thread.resume();
+        while(!targetHasEnteredLoop()) {
+            msg("Target has not yet entered the loop. Sleep 500ms;");
+            try { Thread.sleep(500); } catch (InterruptedException e) { /*ignore */ }
+        }
+
+        thread.suspend();
+        printStack(thread);
+        // frame[0]: EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailureTarget.inlinedCallForcedToReturn()
+        // frame[1]: EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailureTarget.dontinline_testMethod()
+        // frame[2]: EATestCaseBaseTarget.run()
+
+        msg("ForceEarlyReturn");
+        boolean coughtOom = false;
+        try {
+            thread.forceEarlyReturn(env.vm().mirrorOf(43));    // Request force return 43 from inlinedCallForcedToReturn()
+                                                               // reallocation is triggered here
+        } catch (VMOutOfMemoryException oom) {
+            // as expected
+            msg("cought OOM");
+            coughtOom   = true;
+        }        
+        freeAllMemory(testCase);
+        if (env.targetVMOptions.EliminateAllocations) {
+            Asserts.assertTrue(coughtOom, "PopFrame should have triggered an OOM exception in target");
+            thread.forceEarlyReturn(env.vm().mirrorOf(43));
+        }
+        msg("Step over instruction to do the forced return");
+        env.stepOverInstruction(thread);
+        printStack(thread);
+        msg("ForceEarlyReturn DONE");
+    }
+
+    public boolean targetHasEnteredLoop() throws Exception {
+        Value v = getField(testCase, "looping");
+        return ((PrimitiveValue) v).booleanValue();
+    }
+}
+
+class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailureTarget extends EATestCaseBaseTarget {
+
+    public long loopCount;
+    public int checkSum;
+    public boolean looping;
+
+    public void dontinline_testMethod() {
+        PointXY xy = new PointXY(4, 2);
+        int i = inlinedCallForcedToReturn();
+        iResult = xy.x + xy.y + i;
+    }
+
+    public int inlinedCallForcedToReturn() {               // forced to return 43
+        int i = checkSum;
+        dontinline_consumeAllMemory();
+        while (loopCount-- > 0) {
+            looping = true;
+            checkSum += checkSum % ++i;
+        }
+        loopCount = 3;
+        looping = false;
+        return checkSum;
+    }
+
+    public void dontinline_consumeAllMemory() {
+        if (warmupDone) {
+            consumeAllMemory();
+        }
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 4 + 2 + 43;
+    }
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+        loopCount = 3;
+    }
+
+    public void warmupDone() {
+        super.warmupDone();
+        msg("enter 'endless' loop by setting loopCount = 1L << 60");
+        loopCount = 1L << 60; // endless loop
     }
 
     public boolean testFrameShouldBeDeoptimized() {
