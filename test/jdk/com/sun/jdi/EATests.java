@@ -172,6 +172,7 @@ class EATestsTarget {
         // PopFrame test cases
         new EAPopFrameNotInlinedTarget().run();
         new EAPopFrameNotInlinedReallocFailureTarget().run();
+        new EAPopInlinedMethodWithScalarReplacedObjectsReallocFailureTarget().run();
 
         // ForceEarlyReturn test cases
         new EAForceEarlyReturnNotInlinedTarget().run();
@@ -270,6 +271,7 @@ public class EATests extends TestScaffold {
         // PopFrame test cases
         new EAPopFrameNotInlined().setScaffold(this).run();
         new EAPopFrameNotInlinedReallocFailure().setScaffold(this).run();
+        new EAPopInlinedMethodWithScalarReplacedObjectsReallocFailure().setScaffold(this).run();
 
         // ForceEarlyReturn test cases
         new EAForceEarlyReturnNotInlined().setScaffold(this).run();
@@ -1851,6 +1853,110 @@ class EAPopFrameNotInlinedReallocFailureTarget extends EATestCaseBaseTarget {
     public long getExpectedLResult() {
         long n = 10;
         return 2*n*(n+1)/2;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Pop inlined top frame dropping into method with scalar replaced opjects.
+ */
+class EAPopInlinedMethodWithScalarReplacedObjectsReallocFailure extends EATestCaseBaseDebugger {
+
+    public ObjectReference testCase;
+
+    public void runTestCase() throws Exception {
+        ThreadReference thread = env.targetMainThread;
+        testCase = thread.frame(0).thisObject();
+        thread.resume();
+        while(!targetHasEnteredLoop()) {
+            msg("Target has not yet entered the loop. Sleep 500ms;");
+            try { Thread.sleep(500); } catch (InterruptedException e) { /*ignore */ }
+        }
+
+        thread.suspend();
+        printStack(thread);
+        // frame[0]: EAPopInlinedMethodWithScalarReplacedObjectsReallocFailureTarget.inlinedCallForcedToReturn()
+        // frame[1]: EAPopInlinedMethodWithScalarReplacedObjectsReallocFailureTarget.dontinline_testMethod()
+        // frame[2]: EATestCaseBaseTarget.run()
+
+        msg("Pop Frames");
+        boolean coughtOom = false;
+        try {
+            thread.popFrames(thread.frame(0));    // Request pop frame of inlinedCallForcedToReturn()
+                                                  // reallocation is triggered here
+        } catch (VMOutOfMemoryException oom) {
+            // as expected
+            msg("cought OOM");
+            coughtOom = true;
+        }
+        printStack(thread);
+        // frame[0]: EAPopInlinedMethodWithScalarReplacedObjectsReallocFailureTarget.inlinedCallForcedToReturn()
+        // frame[1]: EAPopInlinedMethodWithScalarReplacedObjectsReallocFailureTarget.dontinline_testMethod()
+        // frame[2]: EATestCaseBaseTarget.run()
+
+        freeAllMemory(testCase);
+        setField(testCase, "loopCount", env.vm().mirrorOf(0)); // terminate loop
+        Asserts.assertTrue(coughtOom || !env.targetVMOptions.EliminateAllocations, "PopFrame should have triggered an OOM exception in target");
+        String expectedTopFrame =
+                env.targetVMOptions.EliminateAllocations ? "inlinedCallForcedToReturn" : "dontinline_testMethod";
+        Asserts.assertEQ(expectedTopFrame, thread.frame(0).location().method().name());
+    }
+
+    public boolean targetHasEnteredLoop() throws Exception {
+        Value v = getField(testCase, "looping");
+        return ((PrimitiveValue) v).booleanValue();
+    }
+}
+
+class EAPopInlinedMethodWithScalarReplacedObjectsReallocFailureTarget extends EATestCaseBaseTarget {
+
+    public long loopCount;
+    public long checkSum;
+    public boolean looping;
+
+    public void dontinline_testMethod() {
+        long a[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};                // scalar replaced
+        Vector10 v = new Vector10(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);  // scalar replaced
+        long l = inlinedCallForcedToReturn();
+        lResult = a[0] + a[1] + a[2] + a[3] + a[4] + a[5] + a[6] + a[7] + a[8] + a[9]
+               + v.i0 + v.i1 + v.i2 + v.i3 + v.i4 + v.i5 + v.i6 + v.i7 + v.i8 + v.i9;
+    }
+
+    public long inlinedCallForcedToReturn() {
+        long cs = checkSum;
+        dontinline_consumeAllMemory();
+        while (loopCount-- > 0) {
+            looping = true;
+            checkSum += checkSum % ++cs;
+        }
+        loopCount = 3;
+        looping = false;
+        return checkSum;
+    }
+
+    public void dontinline_consumeAllMemory() {
+        if (warmupDone && (loopCount > 3)) {
+            consumeAllMemory();
+        }
+    }
+
+    @Override
+    public long getExpectedLResult() {
+        long n = 10;
+        return 2*n*(n+1)/2;
+    }
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        loopCount = 3;
+    }
+
+    public void warmupDone() {
+        super.warmupDone();
+        msg("enter 'endless' loop by setting loopCount = 1L << 60");
+        loopCount = 1L << 60; // endless loop
     }
 }
 
