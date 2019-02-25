@@ -30,7 +30,6 @@
  * @library /test/lib /test/hotspot/jtreg
  *
  * @run build TestScaffold VMConnection TargetListener TargetAdapter sun.hotspot.WhiteBox
- * @run main jdk.test.lib.FileInstaller compilerDirectives.json compilerDirectives.json
  * @run driver ClassFileInstaller sun.hotspot.WhiteBox
  *                                sun.hotspot.WhiteBox$WhiteBoxPermission
  * @run compile -g EATests.java
@@ -38,14 +37,93 @@
  *                 -XX:+UnlockDiagnosticVMOptions
  *                 -Xms32m -Xmx32m
  *                 -Xbootclasspath/a:.
+ *                 -XX:CompileCommand=dontinline,*::dontinline_*
  *                 -XX:+WhiteBoxAPI
  *                 -XX:+TraceDeoptimization
  *                 -XX:+PrintCompilation
  *                 -XX:+PrintInlining
  *                 -XX:-TieredCompilation
  *                 -Xbatch
- *                 -XX:CompilerDirectivesFile=compilerDirectives.json
  *                 -XX:CICompilerCount=1
+ *                 -XX:+DoEscapeAnalysis -XX:+EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:+UseBiasedLocking
+ * @run driver EATests
+ *                 -XX:+UnlockDiagnosticVMOptions
+ *                 -Xms32m -Xmx32m
+ *                 -Xbootclasspath/a:.
+ *                 -XX:CompileCommand=dontinline,*::dontinline_*
+ *                 -XX:+WhiteBoxAPI
+ *                 -XX:+TraceDeoptimization
+ *                 -XX:+PrintCompilation
+ *                 -XX:+PrintInlining
+ *                 -XX:-TieredCompilation
+ *                 -Xbatch
+ *                 -XX:CICompilerCount=1
+ *                 -XX:+DoEscapeAnalysis -XX:+EliminateAllocations -XX:-EliminateLocks -XX:+EliminateNestedLocks -XX:+UseBiasedLocking -XX:-UseOptoBiasInlining
+ * @run driver EATests
+ *                 -XX:+UnlockDiagnosticVMOptions
+ *                 -Xms32m -Xmx32m
+ *                 -Xbootclasspath/a:.
+ *                 -XX:CompileCommand=dontinline,*::dontinline_*
+ *                 -XX:+WhiteBoxAPI
+ *                 -XX:+TraceDeoptimization
+ *                 -XX:+PrintCompilation
+ *                 -XX:+PrintInlining
+ *                 -XX:-TieredCompilation
+ *                 -Xbatch
+ *                 -XX:CICompilerCount=1
+ *                 -XX:+DoEscapeAnalysis -XX:-EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:+UseBiasedLocking
+ * @run driver EATests
+ *                 -XX:+UnlockDiagnosticVMOptions
+ *                 -Xms32m -Xmx32m
+ *                 -Xbootclasspath/a:.
+ *                 -XX:CompileCommand=dontinline,*::dontinline_*
+ *                 -XX:+WhiteBoxAPI
+ *                 -XX:+TraceDeoptimization
+ *                 -XX:+PrintCompilation
+ *                 -XX:+PrintInlining
+ *                 -XX:-TieredCompilation
+ *                 -Xbatch
+ *                 -XX:CICompilerCount=1
+ *                 -XX:-DoEscapeAnalysis -XX:-EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:+UseBiasedLocking
+ * @run driver EATests
+ *                 -XX:+UnlockDiagnosticVMOptions
+ *                 -Xms32m -Xmx32m
+ *                 -Xbootclasspath/a:.
+ *                 -XX:CompileCommand=dontinline,*::dontinline_*
+ *                 -XX:+WhiteBoxAPI
+ *                 -XX:+TraceDeoptimization
+ *                 -XX:+PrintCompilation
+ *                 -XX:+PrintInlining
+ *                 -XX:-TieredCompilation
+ *                 -Xbatch
+ *                 -XX:CICompilerCount=1
+ *                 -XX:+DoEscapeAnalysis -XX:+EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:-UseBiasedLocking
+ * @run driver EATests
+ *                 -XX:+UnlockDiagnosticVMOptions
+ *                 -Xms32m -Xmx32m
+ *                 -Xbootclasspath/a:.
+ *                 -XX:CompileCommand=dontinline,*::dontinline_*
+ *                 -XX:+WhiteBoxAPI
+ *                 -XX:+TraceDeoptimization
+ *                 -XX:+PrintCompilation
+ *                 -XX:+PrintInlining
+ *                 -XX:-TieredCompilation
+ *                 -Xbatch
+ *                 -XX:CICompilerCount=1
+ *                 -XX:+DoEscapeAnalysis -XX:-EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:-UseBiasedLocking
+ * @run driver EATests
+ *                 -XX:+UnlockDiagnosticVMOptions
+ *                 -Xms32m -Xmx32m
+ *                 -Xbootclasspath/a:.
+ *                 -XX:CompileCommand=dontinline,*::dontinline_*
+ *                 -XX:+WhiteBoxAPI
+ *                 -XX:+TraceDeoptimization
+ *                 -XX:+PrintCompilation
+ *                 -XX:+PrintInlining
+ *                 -XX:-TieredCompilation
+ *                 -Xbatch
+ *                 -XX:CICompilerCount=1
+ *                 -XX:-DoEscapeAnalysis -XX:-EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:-UseBiasedLocking
  */
 
 import java.lang.reflect.Array;
@@ -86,7 +164,7 @@ Manual execution:
         -XX:-TieredCompilation
         -Xbatch
         $VMOPTS
-        -XX:CompilerDirectivesFile=compilerDirectives.json
+        -XX:CompileCommand=dontinline,*::dontinline_*
         -XX:CICompilerCount=1
     )
     print_and_run "${CMD[@]}"
