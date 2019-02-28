@@ -1342,13 +1342,14 @@ JvmtiEnvBase::check_top_frame(JavaThread* current_thread, JavaThread* java_threa
   }
 
   // If the frame is a compiled one, need to deoptimize it.
+  EADeoptimizationControl dc(current_thread, java_thread);
   if (vf->is_compiled_frame()) {
     if (!vf->fr().can_be_deoptimized()) {
       return JVMTI_ERROR_OPAQUE_FRAME;
     }
     Deoptimization::deoptimize_frame(java_thread, jvf->fr().id());
     // eagerly reallocate scalar replaced objects
-    if (!Deoptimization::deoptimize_objects(jvf->fr().id(), java_thread)) {
+    if (!Deoptimization::deoptimize_objects(dc, jvf->fr().id())) {
       // reallocation of scalar replaced objects failed -> return with error
       return JVMTI_ERROR_OUT_OF_MEMORY;
     }

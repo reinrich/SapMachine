@@ -192,22 +192,79 @@ void Deoptimization::set_objs_are_deoptimized(intptr_t* fr_id, JavaThread* threa
   assert(found, "variable set should exist at least for one vframe");
 }
 
-bool Deoptimization::deoptimize_objects(compiledVFrame* cvf) {
+bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, compiledVFrame* cvf) {
   frame f = cvf->fr();
-  return deoptimize_objects(&f, cvf->register_map(), cvf->thread());
+  return deoptimize_objects(dc, &f, cvf->register_map());
 }
 
+bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, int depth) {
+  ResourceMark rm;
+  HandleMark   hm;
+  RegisterMap  reg_map(dc.deoptee_thread());
+  vframe* vf = dc.deoptee_thread()->last_java_vframe(&reg_map);
+  int cur_depth = 0;
+  while (vf != NULL && ((cur_depth <= depth) || !vf->is_entry_frame())) {
+    if (vf->is_compiled_frame()) {
+      compiledVFrame* cvf = compiledVFrame::cast(vf);
+      // Deoptimize objects
+      if (cvf->not_global_escape_in_scope() && !Deoptimization::deoptimize_objects(dc, cvf)) {
+        // reallocation of scalar replaced objects failed, because heap is exhausted
+        return false;
+      }
+    }
 
-bool Deoptimization::deoptimize_objects(intptr_t* fr_id, JavaThread* deoptee_thread) {
+    // move to next physical frame
+    while(!vf->is_top()) {
+      cur_depth++;
+      vf = vf->sender();
+    }
+    cur_depth++;
+    vf = vf->sender();
+  }
+  return true;
+}
+
+bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, intptr_t* fr_id) {
   // Compute frame and register map based on thread and sp.
-  RegisterMap reg_map(deoptee_thread);
-  frame fr = deoptee_thread->last_frame();
+  RegisterMap reg_map(dc.deoptee_thread());
+  frame fr = dc.deoptee_thread()->last_frame();
   while (fr.id() != fr_id) {
     fr = fr.sender(&reg_map);
   }
-  return Deoptimization::deoptimize_objects(&fr, &reg_map, deoptee_thread);
+  return Deoptimization::deoptimize_objects(dc, &fr, &reg_map);
 }
 
+
+void EADeoptimizationControl::sync_and_suspend_for_object_deoptimization() {
+  if (_already_synchronized) return;
+  set_already_synchronized(true);
+  bool self_deopt = _calling_thread == _deoptee_thread;
+  {
+    assert(!self_deopt || JvmtiObjReallocRelock_lock->owned_by_self(), "should be locked for self deopt");
+    MutexLockerEx ml(self_deopt ? NULL : JvmtiObjReallocRelock_lock);
+    while (_deoptee_thread->is_deopt_suspend()) {
+      JvmtiObjReallocRelock_lock->wait();
+    }
+    if (self_deopt) return; // we're done just return
+
+    // set suspend flag for target thread
+    _deoptee_thread->set_ea_obj_deopt_flag();
+  }
+
+  uint32_t debug_bits = 0;
+  if (!_deoptee_thread->is_thread_fully_suspended(false, &debug_bits)) {
+    VM_ThreadSuspend vm_suspend;
+    VMThread::execute(&vm_suspend);
+  }
+  set_did_suspend(true);
+}
+
+void EADeoptimizationControl::resume_after_object_deoptimization() {
+  assert(_deoptee_thread->is_ea_obj_deopt_suspend(), "not suspended");
+  MutexLocker ml(JvmtiObjReallocRelock_lock);
+  _deoptee_thread->clear_ea_obj_deopt_flag();
+  JvmtiObjReallocRelock_lock->notify_all();
+}
 
 // Reallocate stack allocated objects on the heap. Relock objects if locking has
 // been eliminated. The frame is marked for later deoptimization. Reallocated
@@ -218,8 +275,17 @@ bool Deoptimization::deoptimize_objects(intptr_t* fr_id, JavaThread* deoptee_thr
 // version would be used.
 // JvmtiObjReallocRelock_lock is used to sync concurrent JVMTI threads.
 // Returns false upon failure, true otherwise.
-bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, JavaThread* deoptee_thread) {
-  MutexLocker ml(JvmtiObjReallocRelock_lock);
+bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, frame* fr, const RegisterMap *reg_map) {
+  if (dc.calling_thread() == NULL) {
+    dc.set_calling_thread(JavaThread::current());
+  }
+  JavaThread* ct = dc.calling_thread();
+  JavaThread* deoptee_thread = dc.deoptee_thread();
+  bool self_deopt = ct == deoptee_thread;
+
+  MutexLockerEx(self_deopt ? JvmtiObjReallocRelock_lock : NULL);
+  dc.sync_and_suspend_for_object_deoptimization();
+
   bool realloc_failures = false;
 
   assert(!Thread::current()->is_VM_thread(), "the VM thread cannot reallocate stack objects to the Java heap");
@@ -257,7 +323,6 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
     // locked in callee frames. We need their biases revoked and do it here, because we cannot
     // safepoint in relock_objects(). Note that the markword of such an owner will then point to a
     // callee frame. This will be fixed in relock_objects().
-    JavaThread* thread = JavaThread::current();
     if (UseBiasedLocking && last_cvf->arg_escape()) {
       GrowableArray<Handle>* arg_esc_owners = new GrowableArray<Handle>();
       for (int i = 0; i < vfs->length(); i++) {
@@ -269,7 +334,7 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
             markOop mark = owner->mark();
             if (mark->has_bias_pattern() && !mark->is_biased_anonymously()) {
               assert(mark->biased_locker() == deoptee_thread, "not escaping object can only be biased to current thread");
-              arg_esc_owners->push(Handle(thread, owner));
+              arg_esc_owners->push(Handle(ct, owner));
             }
           }
         }
@@ -280,7 +345,7 @@ bool Deoptimization::deoptimize_objects(frame* fr, const RegisterMap *reg_map, J
     }
 
     // reallocate and relock optimized objects
-    bool deoptimized_objects = Deoptimization::deoptimize_objects_work(thread, vfs, realloc_failures, Unpack_none);
+    bool deoptimized_objects = Deoptimization::deoptimize_objects_work(ct, vfs, realloc_failures, Unpack_none);
     if (!realloc_failures && deoptimized_objects) {
       // now do the updates
       for (int frame_index = 0; frame_index < vfs->length(); frame_index++) {

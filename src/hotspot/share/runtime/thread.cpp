@@ -2293,6 +2293,10 @@ void JavaThread::handle_special_runtime_exit_condition(bool check_asyncs) {
     check_and_handle_async_exceptions();
   }
 
+  if (is_ea_obj_deopt_suspend()) {
+    wait_for_object_deoptimization();
+  }
+
   JFR_ONLY(SUSPEND_THREAD_CONDITIONAL(this);)
 }
 
@@ -2486,6 +2490,18 @@ void JavaThread::java_suspend_self_with_safepoint_check() {
   }
 }
 
+void JavaThread::wait_for_object_deoptimization() {
+  frame_anchor()->make_walkable(this);
+  JavaThreadState state = thread_state();
+  set_thread_state(_thread_in_vm);
+  MutexLocker ml(JvmtiObjReallocRelock_lock);
+  while (is_ea_obj_deopt_suspend()) {
+    JvmtiObjReallocRelock_lock->wait(!Monitor::_no_safepoint_check_flag, 0, Monitor::_as_suspend_equivalent_flag);
+  }
+  set_thread_state(state);
+  InterfaceSupport::serialize_thread_state_with_handler(this);
+}
+
 #ifdef ASSERT
 // Verify the JavaThread has not yet been published in the Threads::list, and
 // hence doesn't need protection from concurrent access at this stage.
@@ -2520,6 +2536,10 @@ void JavaThread::check_safepoint_and_suspend_for_native_trans(JavaThread *thread
     thread->java_suspend_self_with_safepoint_check();
   } else {
     SafepointMechanism::block_if_requested(curJT);
+  }
+
+  if (thread->is_ea_obj_deopt_suspend()) {
+    thread->wait_for_object_deoptimization();
   }
 
   JFR_ONLY(SUSPEND_THREAD_CONDITIONAL(thread);)

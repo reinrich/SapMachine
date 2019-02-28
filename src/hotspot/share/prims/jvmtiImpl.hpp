@@ -32,6 +32,7 @@
 #include "prims/jvmtiEventController.hpp"
 #include "prims/jvmtiTrace.hpp"
 #include "prims/jvmtiUtil.hpp"
+#include "runtime/deoptimization.hpp"
 #include "runtime/stackValueCollection.hpp"
 #include "runtime/vmOperations.hpp"
 #include "utilities/ostream.hpp"
@@ -360,6 +361,8 @@ class VM_GetOrSetLocal : public VM_Operation {
   javaVFrame* _jvf;
   bool        _set;
 
+  EADeoptimizationControl _dc;
+
   // It is possible to get the receiver out of a non-static native wrapper
   // frame.  Use VM_GetReceiver to do this.
   virtual bool getting_receiver() const { return false; }
@@ -370,9 +373,7 @@ class VM_GetOrSetLocal : public VM_Operation {
   javaVFrame* get_java_vframe();
   bool check_slot_type_lvt(javaVFrame* vf);
   bool check_slot_type_no_lvt(javaVFrame* vf);
-#if COMPILER2_OR_JVMCI
   bool deoptimize_objects(javaVFrame* vf);
-#endif
 
 public:
   // Constructor for non-object getter

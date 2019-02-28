@@ -293,7 +293,8 @@ class Thread: public ThreadShadow {
     _has_async_exception    = 0x00000001U, // there is a pending async exception
     _critical_native_unlock = 0x00000002U, // Must call back to unlock JNI critical lock
 
-    _trace_flag             = 0x00000004U  // call tracing backend
+    _trace_flag             = 0x00000004U, // call tracing backend
+    _ea_obj_deopt           = 0x00000008U  // suspend for object reallocation and relocking for JVMTI agent
   };
 
   // various suspension related flags - atomically updated
@@ -541,6 +542,9 @@ class Thread: public ThreadShadow {
   inline void set_trace_flag();
   inline void clear_trace_flag();
 
+  inline void set_ea_obj_deopt_flag();
+  inline void clear_ea_obj_deopt_flag();
+
   // Support for Unhandled Oop detection
   // Add the field for both, fastdebug and debug, builds to keep
   // Thread's fields layout the same.
@@ -614,6 +618,8 @@ class Thread: public ThreadShadow {
   JFR_ONLY(DEFINE_THREAD_LOCAL_ACCESSOR_JFR;)
 
   bool is_trace_suspend()               { return (_suspend_flags & _trace_flag) != 0; }
+
+  bool is_ea_obj_deopt_suspend()        { return (_suspend_flags & _ea_obj_deopt) != 0; }
 
   // VM operation support
   int vm_operation_ticket()                      { return ++_vm_operation_started_count; }
@@ -1346,6 +1352,8 @@ class JavaThread: public Thread {
   inline void set_ext_suspended();
   inline void clear_ext_suspended();
 
+  void wait_for_object_deoptimization();
+
  public:
   void java_suspend(); // higher-level suspension logic called by the public APIs
   void java_resume();  // higher-level resume logic called by the public APIs
@@ -1483,7 +1491,7 @@ class JavaThread: public Thread {
     // we have checked is_external_suspend(), we will recheck its value
     // under SR_lock in java_suspend_self().
     return (_special_runtime_exit_condition != _no_async_condition) ||
-            is_external_suspend() || is_trace_suspend();
+            is_external_suspend() || is_trace_suspend() || is_ea_obj_deopt_suspend();
   }
 
   void set_pending_unsafe_access_error()          { _special_runtime_exit_condition = _async_unsafe_access_error; }

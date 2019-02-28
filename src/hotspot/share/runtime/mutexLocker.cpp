@@ -61,7 +61,7 @@ Mutex*   JmethodIdCreation_lock       = NULL;
 Mutex*   JfieldIdCreation_lock        = NULL;
 Monitor* JNICritical_lock             = NULL;
 Mutex*   JvmtiThreadState_lock        = NULL;
-Mutex*   JvmtiObjReallocRelock_lock   = NULL;
+Monitor* JvmtiObjReallocRelock_lock   = NULL;
 Monitor* Heap_lock                    = NULL;
 Mutex*   ExpandHeap_lock              = NULL;
 Mutex*   AdapterHandlerLibrary_lock   = NULL;
@@ -317,7 +317,7 @@ void mutex_init() {
   def(MultiArray_lock              , PaddedMutex  , nonleaf+2,   false, Monitor::_safepoint_check_always);
 
   def(JvmtiThreadState_lock        , PaddedMutex  , nonleaf+2,   false, Monitor::_safepoint_check_always); // Used by JvmtiThreadState/JvmtiEventController
-  def(JvmtiObjReallocRelock_lock   , PaddedMutex  , nonleaf+10,  false, Monitor::_safepoint_check_always); // Used to synchronize object reallocation/relocking triggered by JVMTI
+  def(JvmtiObjReallocRelock_lock   , PaddedMonitor, nonleaf+10,  false, Monitor::_safepoint_check_always); // Used to synchronize object reallocation/relocking triggered by JVMTI
   def(Management_lock              , PaddedMutex  , nonleaf+2,   false, Monitor::_safepoint_check_always); // used for JVM management
 
   def(Compile_lock                 , PaddedMutex  , nonleaf+3,   true,  Monitor::_safepoint_check_always);

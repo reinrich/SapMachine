@@ -35,6 +35,7 @@ class MonitorValue;
 class ObjectValue;
 class ScopeValue;
 class compiledVFrame;
+class EADeoptimizationControl;
 
 template<class E> class GrowableArray;
 
@@ -181,9 +182,10 @@ JVMCI_ONLY(public:)
 
   public:
   // Relallocates and relocks objects in the given compiled frame to make them accessible through JVMTI
-  static bool deoptimize_objects(frame* fr, const RegisterMap *reg_map, JavaThread* deoptee_thread); NOT_COMPILER2_OR_JVMCI_RETURN_(true);
-  static bool deoptimize_objects(compiledVFrame* cvf)                                                NOT_COMPILER2_OR_JVMCI_RETURN_(true);
-  static bool deoptimize_objects(intptr_t* fr_id, JavaThread* deoptee_thread)                        NOT_COMPILER2_OR_JVMCI_RETURN_(true);
+  static bool deoptimize_objects(EADeoptimizationControl& dc, frame* fr, const RegisterMap *reg_map) NOT_COMPILER2_OR_JVMCI_RETURN_(true);
+  static bool deoptimize_objects(EADeoptimizationControl& dc, compiledVFrame* cvf)                   NOT_COMPILER2_OR_JVMCI_RETURN_(true);
+  static bool deoptimize_objects(EADeoptimizationControl& dc, intptr_t* fr_id)                       NOT_COMPILER2_OR_JVMCI_RETURN_(true);
+  static bool deoptimize_objects(EADeoptimizationControl& dc, int depth)                             NOT_COMPILER2_OR_JVMCI_RETURN_(true);
 
   static vframeArray* create_vframeArray(JavaThread* thread, frame fr, RegisterMap *reg_map, GrowableArray<compiledVFrame*>* chunk, bool realloc_failures);
 
@@ -470,6 +472,37 @@ JVMCI_ONLY(public:)
 
  public:
   static void update_method_data_from_interpreter(MethodData* trap_mdo, int trap_bci, int reason);
+};
+
+class EADeoptimizationControl : StackObj {
+  JavaThread* _calling_thread;
+  JavaThread* _deoptee_thread;
+  bool        _did_suspend;
+  bool        _already_synchronized;
+
+public:
+  EADeoptimizationControl(JavaThread* calling_thread, JavaThread* deoptee_thread)
+    : _calling_thread(calling_thread), _deoptee_thread(deoptee_thread), _did_suspend(false), _already_synchronized(false) {}
+  ~EADeoptimizationControl() {
+    if (_did_suspend) {
+      resume_after_object_deoptimization();
+    }
+  }
+
+  void sync_and_suspend_for_object_deoptimization();
+  void resume_after_object_deoptimization();
+
+  JavaThread* calling_thread() const         { return _calling_thread; }
+  void    set_calling_thread(JavaThread* t)  { _calling_thread = t; }
+
+  JavaThread* deoptee_thread() const         { return _deoptee_thread; }
+  void    set_deoptee_thread(JavaThread* t)  { _deoptee_thread = t; }
+
+  bool        did_suspend() const            {return _did_suspend; }
+  void    set_did_suspend(bool v)            { _did_suspend = v; }
+
+  bool        already_synchronized() const   {return _already_synchronized; }
+  void    set_already_synchronized(bool v)   { _already_synchronized = v; }
 };
 
 class DeoptimizationMarker : StackObj {  // for profiling

@@ -1193,6 +1193,11 @@ JvmtiEnv::GetOwnedMonitorInfo(JavaThread* java_thread, jint* owned_monitor_count
   GrowableArray<jvmtiMonitorStackDepthInfo*> *owned_monitors_list =
       new (ResourceObj::C_HEAP, mtInternal) GrowableArray<jvmtiMonitorStackDepthInfo*>(1, true);
 
+  EADeoptimizationControl dc(calling_thread, java_thread);
+  if (!Deoptimization::deoptimize_objects(dc, MaxJavaStackTraceDepth)) {
+    return JVMTI_ERROR_OUT_OF_MEMORY;
+  }
+
   // It is only safe to perform the direct operation on the current
   // thread. All other usage needs to use a vm-safepoint-op for safety.
   if (java_thread == calling_thread) {
@@ -1238,6 +1243,11 @@ JvmtiEnv::GetOwnedMonitorStackDepthInfo(JavaThread* java_thread, jint* monitor_i
   // growable array of jvmti monitors info on the C-heap
   GrowableArray<jvmtiMonitorStackDepthInfo*> *owned_monitors_list =
          new (ResourceObj::C_HEAP, mtInternal) GrowableArray<jvmtiMonitorStackDepthInfo*>(1, true);
+
+  EADeoptimizationControl dc(calling_thread, java_thread);
+  if (!Deoptimization::deoptimize_objects(dc, MaxJavaStackTraceDepth)) {
+    return JVMTI_ERROR_OUT_OF_MEMORY;
+  }
 
   // It is only safe to perform the direct operation on the current
   // thread. All other usage needs to use a vm-safepoint-op for safety.
@@ -1676,11 +1686,12 @@ JvmtiEnv::PopFrame(JavaThread* java_thread) {
     }
 
     // If any of the top 2 frames is a compiled one, need to deoptimize it
+    EADeoptimizationControl dc(current_thread, java_thread);
     for (int i = 0; i < 2; i++) {
       if (!is_interpreted[i]) {
         Deoptimization::deoptimize_frame(java_thread, frame_sp[i]);
         // eagerly reallocate scalar replaced objects
-        if (!Deoptimization::deoptimize_objects(frame_sp[i], java_thread)) {
+        if (!Deoptimization::deoptimize_objects(dc, frame_sp[i])) {
           // reallocation of scalar replaced objects failed -> return with error
           return JVMTI_ERROR_OUT_OF_MEMORY;
         }
