@@ -236,6 +236,7 @@ class EATestsTarget {
         new EARelockingNestedInflatedTarget()        .run();
         new EARelockingNestedInflated_02Target()     .run();
         new EARelockingArgEscapeLWLockedInCalleeFrameTarget().run();
+        new EAGetOwnedMonitorsTarget()                        .run();
 
         // Test cases that require deoptimization even though neither
         // locks nor allocations are eliminated at the point where
@@ -335,6 +336,7 @@ public class EATests extends TestScaffold {
         new EARelockingNestedInflated()        .setScaffold(this).run();
         new EARelockingNestedInflated_02()     .setScaffold(this).run();
         new EARelockingArgEscapeLWLockedInCalleeFrame().setScaffold(this).run();
+        new EAGetOwnedMonitors()               .setScaffold(this).run();
 
         // Test cases that require deoptimization even though neither
         // locks nor allocations are eliminated at the point where
@@ -389,6 +391,8 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
 
     protected EATests env;
 
+    public ObjectReference testCase;
+
     private static final String targetTestCaseBase = EATestCaseBaseTarget.class.getName();
 
     public abstract void runTestCase() throws Exception;
@@ -401,7 +405,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         try {
             msgHL("Executing test case " + getClass().getName());
             env.testFailed = false;
-            
+
             if (TODO_INTERACTIVE)
                 env.waitForInput();
 
@@ -414,9 +418,10 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
         }
     }
 
-    public void resumeToWarmupDone() {
+    public void resumeToWarmupDone() throws Exception {
         msg("resuming to " + getTargetTestCaseBaseName() + ".warmupDone()V");
         env.resumeTo(getTargetTestCaseBaseName(), "warmupDone", "()V");
+        testCase = env.targetMainThread.frame(0).thisObject();
     }
 
     public void resumeToTestCaseDone() {
@@ -613,9 +618,41 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
      * Free the memory consumed in the target by {@link EATestCaseBaseTarget#consumedMemory}
      * @throws Exception
      */
-    public void freeAllMemory(ObjectReference testCase) throws Exception {
+    public void freeAllMemory() throws Exception {
         msg("free consumed memory");
         setField(testCase, "consumedMemory", null);
+    }
+    
+
+    /**
+     * @return {@link EATestCaseBaseTarget#enteredLoop}. The target must set that field to true as soon as it
+     *         enters the endless loop.
+     * @throws Exception
+     */
+    public boolean targetHasEnteredEndlessLoop() throws Exception {
+        Value v = getField(testCase, "enteredLoop");
+        return ((PrimitiveValue) v).booleanValue();
+    }
+
+    
+    /**
+     * Poll {@link EATestCaseBaseTarget#enteredLoop} and return if it is found to be true.
+     * @throws Exception
+     */
+    public void waitUntilTargetHasEnteredEndlessLoop() throws Exception {
+        while(!targetHasEnteredEndlessLoop()) {
+            msg("Target has not yet entered the loop. Sleep 200ms;");
+            try { Thread.sleep(200); } catch (InterruptedException e) { /*ignore */ }
+        }
+    }
+
+    /**
+     * Set {@link EATestCaseBaseTarget#loopCount} to 0. This will allow the target to
+     * leave the endless loop.
+     * @throws Exception
+     */
+    public void terminateEndlessLoop() throws Exception {
+        setField(testCase, "loopCount", env.vm().mirrorOf(0));
     }
 }
 
@@ -626,6 +663,18 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
 /////////////////////////////////////////////////////////////////////////////
 
 abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runnable {
+
+    /**
+     * The target must set that field to true as soon as it enters the endless loop.
+     */
+    public boolean enteredLoop;
+
+    /**
+     * The number of loop iterations to be performed in a testcase' main test method, i.e. in its
+     * version of {@link EATestCaseBaseTarget#dontinline_testMethod()}.
+     * To get an endless loop you must set it to something like 1L<<62 in {@link EATestCaseBaseTarget#warmupDone()} 
+     */
+    public long loopCount;
 
     public static final String TESTMETHOD_DEFAULT_NAME = "dontinline_testMethod";
 
@@ -1822,6 +1871,61 @@ class EADeoptFrameAfterReadLocalObject_03Target extends EATestCaseBaseTarget {
 
 /////////////////////////////////////////////////////////////////////////////
 //
+// Monitor info tests
+//
+/////////////////////////////////////////////////////////////////////////////
+
+class EAGetOwnedMonitorsTarget extends EATestCaseBaseTarget {
+
+    public long checkSum;
+
+    public void dontinline_testMethod() {
+        PointXY l1 = new PointXY(4, 2);
+        synchronized (l1) {
+            dontline_endlessLoop();
+        }
+    }
+
+    public long dontline_endlessLoop() {
+        long cs = checkSum;
+        while (loopCount-- > 0) {
+            enteredLoop = true;
+            checkSum += checkSum % ++cs;
+        }
+        loopCount = 3;
+        enteredLoop = false;
+        return checkSum;
+    }
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+        loopCount = 3;
+    }
+
+    public void warmupDone() {
+        super.warmupDone();
+        msg("enter 'endless' loop by setting loopCount = 1L << 60");
+        loopCount = 1L << 60; // endless loop
+    }
+}
+
+class EAGetOwnedMonitors extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        env.targetMainThread.resume();
+        waitUntilTargetHasEnteredEndlessLoop();
+        // In contrast to JVMTI, JDWP requires a target thread to be suspended, before the owned monitors can be queried
+        env.targetMainThread.suspend();
+        List<ObjectReference> monitors = env.targetMainThread.ownedMonitors();
+        Asserts.assertEQ(monitors.size(), 1, "unexpected number of owned monitors");
+        terminateEndlessLoop();
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+//
 // PopFrame tests
 //
 /////////////////////////////////////////////////////////////////////////////
@@ -1874,7 +1978,6 @@ class EAPopFrameNotInlinedReallocFailure extends EATestCaseBaseDebugger {
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(getTargetTestCaseBaseName(), "dontinline_brkpt", "()V");
         ThreadReference thread = bpe.thread();
-        ObjectReference testCase = thread.frame(1).thisObject();
         printStack(thread);
         // frame[0]: EATestCaseBaseTarget.dontinline_brkpt()
         // frame[1]: EAPopFrameNotInlinedReallocFailureTarget.dontinline_consume_all_memory_brkpt()
@@ -1891,7 +1994,7 @@ class EAPopFrameNotInlinedReallocFailure extends EATestCaseBaseDebugger {
             msg("cought OOM");
             coughtOom  = true;
         }
-        freeAllMemory(testCase);
+        freeAllMemory();
         // We succeeded to pop just one frame. When we continue, we will call dontinline_brkpt() again.
         Asserts.assertTrue(coughtOom || !env.targetVMOptions.EliminateAllocations, "PopFrame should have triggered an OOM exception in target");
         String expectedTopFrame =
@@ -1941,13 +2044,10 @@ class EAPopFrameNotInlinedReallocFailureTarget extends EATestCaseBaseTarget {
  */
 class EAPopInlinedMethodWithScalarReplacedObjectsReallocFailure extends EATestCaseBaseDebugger {
 
-    public ObjectReference testCase;
-
     public void runTestCase() throws Exception {
         ThreadReference thread = env.targetMainThread;
-        testCase = thread.frame(0).thisObject();
         thread.resume();
-        while(!targetHasEnteredLoop()) {
+        while(!targetHasEnteredEndlessLoop()) {
             msg("Target has not yet entered the loop. Sleep 500ms;");
             try { Thread.sleep(500); } catch (InterruptedException e) { /*ignore */ }
         }
@@ -1973,25 +2073,18 @@ class EAPopInlinedMethodWithScalarReplacedObjectsReallocFailure extends EATestCa
         // frame[1]: EAPopInlinedMethodWithScalarReplacedObjectsReallocFailureTarget.dontinline_testMethod()
         // frame[2]: EATestCaseBaseTarget.run()
 
-        freeAllMemory(testCase);
+        freeAllMemory();
         setField(testCase, "loopCount", env.vm().mirrorOf(0)); // terminate loop
         Asserts.assertTrue(coughtOom || !env.targetVMOptions.EliminateAllocations, "PopFrame should have triggered an OOM exception in target");
         String expectedTopFrame =
                 env.targetVMOptions.EliminateAllocations ? "inlinedCallForcedToReturn" : "dontinline_testMethod";
         Asserts.assertEQ(expectedTopFrame, thread.frame(0).location().method().name());
     }
-
-    public boolean targetHasEnteredLoop() throws Exception {
-        Value v = getField(testCase, "looping");
-        return ((PrimitiveValue) v).booleanValue();
-    }
 }
 
 class EAPopInlinedMethodWithScalarReplacedObjectsReallocFailureTarget extends EATestCaseBaseTarget {
 
-    public long loopCount;
     public long checkSum;
-    public boolean looping;
 
     public void dontinline_testMethod() {
         long a[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};                // scalar replaced
@@ -2005,11 +2098,11 @@ class EAPopInlinedMethodWithScalarReplacedObjectsReallocFailureTarget extends EA
         long cs = checkSum;
         dontinline_consumeAllMemory();
         while (loopCount-- > 0) {
-            looping = true;
+            enteredLoop = true;
             checkSum += checkSum % ++cs;
         }
         loopCount = 3;
-        looping = false;
+        enteredLoop = false;
         return checkSum;
     }
 
@@ -2103,13 +2196,10 @@ class EAForceEarlyReturnNotInlinedTarget extends EATestCaseBaseTarget {
  */
 class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjects extends EATestCaseBaseDebugger {
 
-    public ObjectReference testCase;
-
     public void runTestCase() throws Exception {
         ThreadReference thread = env.targetMainThread;
-        testCase = thread.frame(0).thisObject();
         thread.resume();
-        while(!targetHasEnteredLoop()) {
+        while(!targetHasEnteredEndlessLoop()) {
             msg("Target has not yet entered the loop. Sleep 100ms;");
             try { Thread.sleep(100); } catch (InterruptedException e) { /*ignore */ }
         }
@@ -2128,18 +2218,11 @@ class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjects extends EATestC
         printStack(thread);
         msg("ForceEarlyReturn DONE");
     }
-
-    public boolean targetHasEnteredLoop() throws Exception {
-        Value v = getField(testCase, "looping");
-        return ((PrimitiveValue) v).booleanValue();
-    }
 }
 
 class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsTarget extends EATestCaseBaseTarget {
 
-    public long loopCount;
     public int checkSum;
-    public boolean looping;
 
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(4, 2);
@@ -2150,11 +2233,11 @@ class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsTarget extends E
     public int inlinedCallForcedToReturn() {               // forced to return 43
         int i = checkSum;
         while (loopCount-- > 0) {
-            looping = true;
+            enteredLoop = true;
             checkSum += checkSum % ++i;
         }
         loopCount = 3;
-        looping = false;
+        enteredLoop = false;
         return checkSum;
     }
 
@@ -2188,13 +2271,10 @@ class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsTarget extends E
  */
 class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailure extends EATestCaseBaseDebugger {
 
-    public ObjectReference testCase;
-
     public void runTestCase() throws Exception {
         ThreadReference thread = env.targetMainThread;
-        testCase = thread.frame(0).thisObject();
         thread.resume();
-        while(!targetHasEnteredLoop()) {
+        while(!targetHasEnteredEndlessLoop()) {
             msg("Target has not yet entered the loop. Sleep 500ms;");
             try { Thread.sleep(500); } catch (InterruptedException e) { /*ignore */ }
         }
@@ -2215,7 +2295,7 @@ class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailure e
             msg("cought OOM");
             coughtOom   = true;
         }        
-        freeAllMemory(testCase);
+        freeAllMemory();
         if (env.targetVMOptions.EliminateAllocations) {
             Asserts.assertTrue(coughtOom, "PopFrame should have triggered an OOM exception in target");
             thread.forceEarlyReturn(env.vm().mirrorOf(43));
@@ -2225,18 +2305,11 @@ class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailure e
         printStack(thread);
         msg("ForceEarlyReturn DONE");
     }
-
-    public boolean targetHasEnteredLoop() throws Exception {
-        Value v = getField(testCase, "looping");
-        return ((PrimitiveValue) v).booleanValue();
-    }
 }
 
 class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailureTarget extends EATestCaseBaseTarget {
 
-    public long loopCount;
     public int checkSum;
-    public boolean looping;
 
     public void dontinline_testMethod() {
         long a[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};                // scalar replaced
@@ -2250,11 +2323,11 @@ class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailureTa
         long cs = checkSum;
         dontinline_consumeAllMemory();
         while (loopCount-- > 0) {
-            looping = true;
+            enteredLoop = true;
             checkSum += checkSum % ++cs;
         }
         loopCount = 3;
-        looping = false;
+        enteredLoop = false;
         return checkSum;
     }
 
