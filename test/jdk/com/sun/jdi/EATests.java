@@ -641,7 +641,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
      */
     public void waitUntilTargetHasEnteredEndlessLoop() throws Exception {
         while(!targetHasEnteredEndlessLoop()) {
-            msg("Target has not yet entered the loop. Sleep 200ms;");
+            msg("Target has not yet entered the loop. Sleep 200ms.");
             try { Thread.sleep(200); } catch (InterruptedException e) { /*ignore */ }
         }
     }
@@ -2047,10 +2047,7 @@ class EAPopInlinedMethodWithScalarReplacedObjectsReallocFailure extends EATestCa
     public void runTestCase() throws Exception {
         ThreadReference thread = env.targetMainThread;
         thread.resume();
-        while(!targetHasEnteredEndlessLoop()) {
-            msg("Target has not yet entered the loop. Sleep 500ms;");
-            try { Thread.sleep(500); } catch (InterruptedException e) { /*ignore */ }
-        }
+        waitUntilTargetHasEnteredEndlessLoop();
 
         thread.suspend();
         printStack(thread);
@@ -2199,10 +2196,7 @@ class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjects extends EATestC
     public void runTestCase() throws Exception {
         ThreadReference thread = env.targetMainThread;
         thread.resume();
-        while(!targetHasEnteredEndlessLoop()) {
-            msg("Target has not yet entered the loop. Sleep 100ms;");
-            try { Thread.sleep(100); } catch (InterruptedException e) { /*ignore */ }
-        }
+        waitUntilTargetHasEnteredEndlessLoop();
 
         thread.suspend();
         printStack(thread);
@@ -2274,10 +2268,7 @@ class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailure e
     public void runTestCase() throws Exception {
         ThreadReference thread = env.targetMainThread;
         thread.resume();
-        while(!targetHasEnteredEndlessLoop()) {
-            msg("Target has not yet entered the loop. Sleep 500ms;");
-            try { Thread.sleep(500); } catch (InterruptedException e) { /*ignore */ }
-        }
+        waitUntilTargetHasEnteredEndlessLoop();
 
         thread.suspend();
         printStack(thread);
