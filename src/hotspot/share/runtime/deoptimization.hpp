@@ -475,15 +475,21 @@ JVMCI_ONLY(public:)
 };
 
 class EADeoptimizationControl : StackObj {
-  JavaThread* _calling_thread;
-  JavaThread* _deoptee_thread;
-  bool        _did_suspend;
-  bool        _already_synchronized;
+  JavaThread* const _calling_thread;
+  JavaThread* const _deoptee_thread;
+  bool              _did_suspend;
 
 public:
   EADeoptimizationControl(JavaThread* calling_thread, JavaThread* deoptee_thread)
-    : _calling_thread(calling_thread), _deoptee_thread(deoptee_thread), _did_suspend(false), _already_synchronized(false) {}
+    : _calling_thread(calling_thread), _deoptee_thread(deoptee_thread), _did_suspend(false) {
+    COMPILER2_OR_JVMCI_PRESENT(sync_and_suspend_for_object_deoptimization());
+  }
+
+#ifdef COMPILER2_OR_JVMCI
   ~EADeoptimizationControl() {
+    if (_calling_thread == _deoptee_thread) {
+      JvmtiObjReallocRelock_lock->unlock();
+    }
     if (_did_suspend) {
       resume_after_object_deoptimization();
     }
@@ -491,18 +497,13 @@ public:
 
   void sync_and_suspend_for_object_deoptimization();
   void resume_after_object_deoptimization();
+#endif // COMPILER2_OR_JVMCI
 
   JavaThread* calling_thread() const         { return _calling_thread; }
-  void    set_calling_thread(JavaThread* t)  { _calling_thread = t; }
-
   JavaThread* deoptee_thread() const         { return _deoptee_thread; }
-  void    set_deoptee_thread(JavaThread* t)  { _deoptee_thread = t; }
 
   bool        did_suspend() const            {return _did_suspend; }
   void    set_did_suspend(bool v)            { _did_suspend = v; }
-
-  bool        already_synchronized() const   {return _already_synchronized; }
-  void    set_already_synchronized(bool v)   { _already_synchronized = v; }
 };
 
 class DeoptimizationMarker : StackObj {  // for profiling

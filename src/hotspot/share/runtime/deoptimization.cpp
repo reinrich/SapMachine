@@ -236,20 +236,23 @@ bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, intptr_t* f
 
 
 void EADeoptimizationControl::sync_and_suspend_for_object_deoptimization() {
-  if (_already_synchronized) return;
-  set_already_synchronized(true);
-  bool self_deopt = _calling_thread == _deoptee_thread;
-  {
-    assert(!self_deopt || JvmtiObjReallocRelock_lock->owned_by_self(), "should be locked for self deopt");
-    MutexLockerEx ml(self_deopt ? NULL : JvmtiObjReallocRelock_lock);
-    while (_deoptee_thread->is_deopt_suspend()) {
-      JvmtiObjReallocRelock_lock->wait();
-    }
-    if (self_deopt) return; // we're done just return
+  assert(_calling_thread != NULL, "calling thread must not be NULL");
+  assert(_deoptee_thread != NULL, "deoptee thread must not be NULL");
 
-    // set suspend flag for target thread
-    _deoptee_thread->set_ea_obj_deopt_flag();
+  JvmtiObjReallocRelock_lock->lock(_calling_thread);
+  while (_deoptee_thread->is_deopt_suspend()) {
+    JvmtiObjReallocRelock_lock->wait();
   }
+
+  if (_calling_thread == _deoptee_thread) {
+    // Calling thread is deoptimizing objects itself.
+    // No need to suspend, but keep JvmtiObjReallocRelock_lock locked!
+    return;
+  }
+
+  // set suspend flag for target thread
+  _deoptee_thread->set_ea_obj_deopt_flag();
+  JvmtiObjReallocRelock_lock->unlock();
 
   uint32_t debug_bits = 0;
   if (!_deoptee_thread->is_thread_fully_suspended(false, &debug_bits)) {
@@ -276,16 +279,8 @@ void EADeoptimizationControl::resume_after_object_deoptimization() {
 // JvmtiObjReallocRelock_lock is used to sync concurrent JVMTI threads.
 // Returns false upon failure, true otherwise.
 bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, frame* fr, const RegisterMap *reg_map) {
-  if (dc.calling_thread() == NULL) {
-    dc.set_calling_thread(JavaThread::current());
-  }
   JavaThread* ct = dc.calling_thread();
   JavaThread* deoptee_thread = dc.deoptee_thread();
-  bool self_deopt = ct == deoptee_thread;
-
-  MutexLockerEx(self_deopt ? JvmtiObjReallocRelock_lock : NULL);
-  dc.sync_and_suspend_for_object_deoptimization();
-
   bool realloc_failures = false;
 
   assert(!Thread::current()->is_VM_thread(), "the VM thread cannot reallocate stack objects to the Java heap");

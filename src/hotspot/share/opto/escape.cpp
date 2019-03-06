@@ -324,28 +324,36 @@ bool ConnectionGraph::compute_escape() {
 
   // Annotate at safepoints if they have <= ArgEscape objects in their scope and at
   // java calls if they pass ArgEscape objects as parameters.
-  if (has_non_escaping_obj && C->env()->should_retain_local_variables()) {
+  if (has_non_escaping_obj &&
+      (C->env()->should_retain_local_variables() || C->env()->jvmti_can_get_owned_monitor_info())) {
     int sfn_length = sfn_worklist.length();
     for (int next = 0; next < sfn_length; next++) {
       SafePointNode* sfn = sfn_worklist.at(next);
       bool found_not_global_escape = false;
-      bool found_arg_escape_in_params = false;
       for (JVMState* jvms = sfn->jvms(); jvms && !found_not_global_escape; jvms = jvms->caller()) {
-        int num_locs = jvms->loc_size();
-        for(int idx = 0; idx < num_locs && !found_not_global_escape; idx++ ) {
-          Node* l = sfn->local(jvms, idx);
-          found_not_global_escape = not_global_escape(l);
+        if (C->env()->should_retain_local_variables()) {
+          // Jvmti agents can access locals. Must provide info about local objects at runtime.
+          int num_locs = jvms->loc_size();
+          for(int idx = 0; idx < num_locs && !found_not_global_escape; idx++ ) {
+            Node* l = sfn->local(jvms, idx);
+            found_not_global_escape = not_global_escape(l);
+          }
         }
-        int num_stk = jvms->stk_size();
-        for(int idx = 0; idx < num_stk && !found_not_global_escape; idx++ ) {
-          Node* s = sfn->stack(jvms, idx);
-          found_not_global_escape = not_global_escape(s);
+        if (C->env()->jvmti_can_get_owned_monitor_info()) {
+          // Jvmti agents can read monitors. Must provide info about local objects at runtime.
+          int num_mon = jvms->mon_size();
+          for(int idx = 0; idx < num_mon && !found_not_global_escape; idx++ ) {
+            Node* m = sfn->monitor_obj(jvms, idx);
+            found_not_global_escape = m != NULL && not_global_escape(m);
+          }
         }
       }
       sfn->set_not_global_escape_in_scope(found_not_global_escape);
 
       if (!sfn->is_CallJava()) continue;
+
       CallJavaNode* call = sfn->as_CallJava();
+      bool found_arg_escape_in_params = false;
       if (call->is_CallStaticJava()) {
         const char* name = call->as_CallStaticJava()->_name;
         if (name != NULL && strcmp(name, "uncommon_trap") == 0) continue; // no arg escapes through uncommon traps

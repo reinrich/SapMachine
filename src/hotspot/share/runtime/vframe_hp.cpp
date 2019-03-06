@@ -317,7 +317,7 @@ bool compiledVFrame::not_global_escape_in_scope() const {
     assert(nm->is_native_method(), "must be native");
     return false;
   }
-  return scope()->not_global_escape_in_scope();
+  return (scope()->objects() != NULL) || scope()->not_global_escape_in_scope();
 }
 
 bool compiledVFrame::arg_escape() const {

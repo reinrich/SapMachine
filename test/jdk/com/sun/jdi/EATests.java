@@ -27,6 +27,7 @@
  * @summary TODO: Materialize object in non-topframe at call returning an object
  * @author Richard Reingruber richard DOT reingruber AT sap DOT com
  *
+ * @requires vm.compiler2.enabled
  * @library /test/lib /test/hotspot/jtreg
  *
  * @run build TestScaffold VMConnection TargetListener TargetAdapter sun.hotspot.WhiteBox
@@ -625,18 +626,18 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
     
 
     /**
-     * @return {@link EATestCaseBaseTarget#enteredLoop}. The target must set that field to true as soon as it
+     * @return {@link EATestCaseBaseTarget#targetIsInLoop}. The target must set that field to true as soon as it
      *         enters the endless loop.
      * @throws Exception
      */
     public boolean targetHasEnteredEndlessLoop() throws Exception {
-        Value v = getField(testCase, "enteredLoop");
+        Value v = getField(testCase, "targetIsInLoop");
         return ((PrimitiveValue) v).booleanValue();
     }
 
     
     /**
-     * Poll {@link EATestCaseBaseTarget#enteredLoop} and return if it is found to be true.
+     * Poll {@link EATestCaseBaseTarget#targetIsInLoop} and return if it is found to be true.
      * @throws Exception
      */
     public void waitUntilTargetHasEnteredEndlessLoop() throws Exception {
@@ -652,7 +653,8 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
      * @throws Exception
      */
     public void terminateEndlessLoop() throws Exception {
-        setField(testCase, "loopCount", env.vm().mirrorOf(0));
+        msg("terminate loop");
+        setField(testCase, "doLoop", env.vm().mirrorOf(false));
     }
 }
 
@@ -667,14 +669,21 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
     /**
      * The target must set that field to true as soon as it enters the endless loop.
      */
-    public boolean enteredLoop;
+    public volatile boolean targetIsInLoop;
 
     /**
      * The number of loop iterations to be performed in a testcase' main test method, i.e. in its
      * version of {@link EATestCaseBaseTarget#dontinline_testMethod()}.
      * To get an endless loop you must set it to something like 1L<<62 in {@link EATestCaseBaseTarget#warmupDone()} 
      */
-    public long loopCount;
+    public volatile long loopCount;
+
+    /**
+     * Used in {@link EATestCaseBaseDebugger#terminateEndlessLoop()} to signal target to leave the endless loop.
+     */
+    public volatile boolean doLoop;
+
+    public long checkSum;
 
     public static final String TESTMETHOD_DEFAULT_NAME = "dontinline_testMethod";
 
@@ -725,10 +734,12 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
         setUp();
         msg(testCaseName + " is up and running.");
         compileTestMethod();
+        msg(testCaseName + " warmup done.");
         warmupDone();
         checkCompLevel();
         dontinline_testMethod();
         checkResult();
+        msg(testCaseName + " done.");
         testCaseDone();
     }
 
@@ -797,17 +808,27 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
         }
     }
 
+    public long dontline_endlessLoop() {
+        long cs = checkSum;
+        doLoop = true;
+        while (loopCount-- > 0 && doLoop) {
+            targetIsInLoop = true;
+            checkSum += checkSum % ++cs;
+        }
+        loopCount = 3;
+        targetIsInLoop = false;
+        return checkSum;
+    }
+
     public boolean testFrameShouldBeDeoptimized() {
         return DoEscapeAnalysis;
     }
 
     public void warmupDone() {
-        msg(testCaseName + " warmup done.");
         warmupDone = true;
     }
 
     public void testCaseDone() {
-        msg(testCaseName + " done.");
     }
 
     public void compileTestMethod() {
@@ -1886,17 +1907,6 @@ class EAGetOwnedMonitorsTarget extends EATestCaseBaseTarget {
         }
     }
 
-    public long dontline_endlessLoop() {
-        long cs = checkSum;
-        while (loopCount-- > 0) {
-            enteredLoop = true;
-            checkSum += checkSum % ++cs;
-        }
-        loopCount = 3;
-        enteredLoop = false;
-        return checkSum;
-    }
-
     @Override
     public void setUp() {
         super.setUp();
@@ -1914,10 +1924,13 @@ class EAGetOwnedMonitorsTarget extends EATestCaseBaseTarget {
 class EAGetOwnedMonitors extends EATestCaseBaseDebugger {
 
     public void runTestCase() throws Exception {
+        msg("resume");
         env.targetMainThread.resume();
         waitUntilTargetHasEnteredEndlessLoop();
         // In contrast to JVMTI, JDWP requires a target thread to be suspended, before the owned monitors can be queried
+        msg("suspend target");
         env.targetMainThread.suspend();
+        msg("Get owned monitors");
         List<ObjectReference> monitors = env.targetMainThread.ownedMonitors();
         Asserts.assertEQ(monitors.size(), 1, "unexpected number of owned monitors");
         terminateEndlessLoop();
@@ -2095,11 +2108,11 @@ class EAPopInlinedMethodWithScalarReplacedObjectsReallocFailureTarget extends EA
         long cs = checkSum;
         dontinline_consumeAllMemory();
         while (loopCount-- > 0) {
-            enteredLoop = true;
+            targetIsInLoop = true;
             checkSum += checkSum % ++cs;
         }
         loopCount = 3;
-        enteredLoop = false;
+        targetIsInLoop = false;
         return checkSum;
     }
 
@@ -2227,11 +2240,11 @@ class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsTarget extends E
     public int inlinedCallForcedToReturn() {               // forced to return 43
         int i = checkSum;
         while (loopCount-- > 0) {
-            enteredLoop = true;
+            targetIsInLoop = true;
             checkSum += checkSum % ++i;
         }
         loopCount = 3;
-        enteredLoop = false;
+        targetIsInLoop = false;
         return checkSum;
     }
 
@@ -2314,11 +2327,11 @@ class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailureTa
         long cs = checkSum;
         dontinline_consumeAllMemory();
         while (loopCount-- > 0) {
-            enteredLoop = true;
+            targetIsInLoop = true;
             checkSum += checkSum % ++cs;
         }
         loopCount = 3;
-        enteredLoop = false;
+        targetIsInLoop = false;
         return checkSum;
     }
 
