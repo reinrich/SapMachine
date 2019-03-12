@@ -237,7 +237,8 @@ class EATestsTarget {
         new EARelockingNestedInflatedTarget()        .run();
         new EARelockingNestedInflated_02Target()     .run();
         new EARelockingArgEscapeLWLockedInCalleeFrameTarget().run();
-        new EAGetOwnedMonitorsTarget()                        .run();
+        new EAGetOwnedMonitorsTarget()               .run();
+        new EAEntryCountTarget()                     .run();
 
         // Test cases that require deoptimization even though neither
         // locks nor allocations are eliminated at the point where
@@ -338,6 +339,7 @@ public class EATests extends TestScaffold {
         new EARelockingNestedInflated_02()     .setScaffold(this).run();
         new EARelockingArgEscapeLWLockedInCalleeFrame().setScaffold(this).run();
         new EAGetOwnedMonitors()               .setScaffold(this).run();
+        new EAEntryCount()                     .setScaffold(this).run();
 
         // Test cases that require deoptimization even though neither
         // locks nor allocations are eliminated at the point where
@@ -1933,6 +1935,58 @@ class EAGetOwnedMonitors extends EATestCaseBaseDebugger {
         msg("Get owned monitors");
         List<ObjectReference> monitors = env.targetMainThread.ownedMonitors();
         Asserts.assertEQ(monitors.size(), 1, "unexpected number of owned monitors");
+        terminateEndlessLoop();
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+class EAEntryCountTarget extends EATestCaseBaseTarget {
+
+    public long checkSum;
+
+    public void dontinline_testMethod() {
+        PointXY l1 = new PointXY(4, 2);
+        synchronized (l1) {
+            inline_testMethod2(l1);
+        }
+    }
+
+    public void inline_testMethod2(PointXY l1) {
+        synchronized (l1) {
+            dontline_endlessLoop();
+        }
+    }
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+        loopCount = 3;
+    }
+
+    public void warmupDone() {
+        super.warmupDone();
+        msg("enter 'endless' loop by setting loopCount = 1L << 60");
+        loopCount = 1L << 60; // endless loop
+    }
+}
+
+class EAEntryCount extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        msg("resume");
+        env.targetMainThread.resume();
+        waitUntilTargetHasEnteredEndlessLoop();
+        // In contrast to JVMTI, JDWP requires a target thread to be suspended, before the owned monitors can be queried
+        msg("suspend target");
+        env.targetMainThread.suspend();
+        msg("Get owned monitors");
+        List<ObjectReference> monitors = env.targetMainThread.ownedMonitors();
+        Asserts.assertEQ(monitors.size(), 1, "unexpected number of owned monitors");
+        msg("Get entry count");
+        int entryCount = monitors.get(0).entryCount();
+        Asserts.assertEQ(entryCount, 2, "wrong entry count");
         terminateEndlessLoop();
     }
 }
