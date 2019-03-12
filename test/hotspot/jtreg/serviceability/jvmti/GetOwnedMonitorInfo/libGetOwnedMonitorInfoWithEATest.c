@@ -103,7 +103,7 @@ jint Agent_Initialize(JavaVM *jvm, char *options, void *reserved) {
         return JNI_ERR;
     }
 
-    caps.can_get_owned_monitor_stack_depth_info = 1;
+    caps.can_get_owned_monitor_info = 1;
 
     err = (*jvmti)->AddCapabilities(jvmti, &caps);
     if (err != JVMTI_ERROR_NONE) {
@@ -119,8 +119,8 @@ jint Agent_Initialize(JavaVM *jvm, char *options, void *reserved) {
         return JNI_ERR;
     }
 
-    if (!caps.can_get_owned_monitor_stack_depth_info) {
-        fprintf(stderr, "Warning: GetOwnedMonitorStackDepthInfo is not implemented\n");
+    if (!caps.can_get_owned_monitor_info) {
+        fprintf(stderr, "Warning: GetOwnedMonitorInfo is not implemented\n");
         return JNI_ERR;
     }
 
@@ -129,11 +129,11 @@ jint Agent_Initialize(JavaVM *jvm, char *options, void *reserved) {
 }
 
 JNIEXPORT jint JNICALL
-Java_GetOwnedMonitorStackDepthInfoWithEATest_getOwnedMonitorStackDepthInfo(JNIEnv *env, jclass cls, jobject targetThread, jobjectArray ownedMonitors, jintArray depths) {
+Java_GetOwnedMonitorInfoWithEATest_getOwnedMonitorInfo(JNIEnv *env, jclass cls, jobject targetThread, jobjectArray resOwnedMonitors) {
     jvmtiError err;
     jvmtiThreadInfo threadInfo;
     jint monitorCount;
-    jvmtiMonitorStackDepthInfo* stackDepthInfo;
+    jobject* monitors;
     jclass lock1Class;
     jclass lock2Class;
 
@@ -146,24 +146,21 @@ Java_GetOwnedMonitorStackDepthInfoWithEATest_getOwnedMonitorStackDepthInfo(JNIEn
         return FAILED;
     }
 
-    err = (*jvmti)->GetOwnedMonitorStackDepthInfo(jvmti, targetThread, &monitorCount, &stackDepthInfo);
+    err = (*jvmti)->GetOwnedMonitorInfo(jvmti, targetThread, &monitorCount, &monitors);
     if (err != JVMTI_ERROR_NONE) {
         ShowErrorMessage(jvmti, err,
-                "getOwnedMonitorsFor: error in JVMTI GetOwnedMonitorStackDepthInfo");
+                "getOwnedMonitorsFor: error in JVMTI GetOwnedMonitorInfo");
         return FAILED;
     }
 
     printf("getOwnedMonitorsFor: %s owns %d monitor(s)\n", threadInfo.name, monitorCount);
 
     jboolean isCopy;
-    jint* depthsPtr = (*env)->GetIntArrayElements(env, depths, &isCopy);
     for (idx = 0; idx < monitorCount; idx++) {
-      (*env)->SetObjectArrayElement(env, ownedMonitors, idx, stackDepthInfo[idx].monitor);
-      depthsPtr[idx] = stackDepthInfo[idx].stack_depth;
+      (*env)->SetObjectArrayElement(env, resOwnedMonitors, idx, monitors[idx]);
     }
-    (*env)->ReleaseIntArrayElements(env, depths, depthsPtr, 0);
 
-    (*jvmti)->Deallocate(jvmti, (unsigned char *) stackDepthInfo);
+    (*jvmti)->Deallocate(jvmti, (unsigned char *) monitors);
     (*jvmti)->Deallocate(jvmti, (unsigned char *) threadInfo.name);
     return monitorCount;
 }

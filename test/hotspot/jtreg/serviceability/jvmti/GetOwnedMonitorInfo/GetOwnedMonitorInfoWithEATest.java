@@ -24,12 +24,12 @@
 /**
  * @test
  * @bug 7777777
- * @summary Test JVMTI's GetOwnedMonitorStackDepthInfo with scalar replaced objects and eliminated locks on stack
+ * @summary Test JVMTI's GetOwnedMonitorInfo with scalar replaced objects and eliminated locks on stack
  * @requires vm.compiler2.enabled
  * @library /test/lib
- * @compile GetOwnedMonitorStackDepthInfoWithEATest.java
+ * @compile GetOwnedMonitorInfoWithEATest.java
  * @run main/othervm/native
- *                  -agentlib:GetOwnedMonitorStackDepthInfoWithEATest
+ *                  -agentlib:GetOwnedMonitorInfoWithEATest
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
@@ -40,9 +40,9 @@
  *                  -Xbatch
  *                  -XX:CICompilerCount=1
  *                  -XX:+DoEscapeAnalysis -XX:+EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:+UseBiasedLocking
- *                  GetOwnedMonitorStackDepthInfoWithEATest
+ *                  GetOwnedMonitorInfoWithEATest
  * @run main/othervm/native
- *                  -agentlib:GetOwnedMonitorStackDepthInfoWithEATest
+ *                  -agentlib:GetOwnedMonitorInfoWithEATest
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
@@ -53,9 +53,9 @@
  *                  -Xbatch
  *                  -XX:CICompilerCount=1
  *                  -XX:+DoEscapeAnalysis -XX:+EliminateAllocations -XX:-EliminateLocks -XX:+EliminateNestedLocks -XX:+UseBiasedLocking -XX:-UseOptoBiasInlining
- *                  GetOwnedMonitorStackDepthInfoWithEATest
+ *                  GetOwnedMonitorInfoWithEATest
  * @run main/othervm/native
- *                  -agentlib:GetOwnedMonitorStackDepthInfoWithEATest
+ *                  -agentlib:GetOwnedMonitorInfoWithEATest
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
@@ -66,9 +66,9 @@
  *                  -Xbatch
  *                  -XX:CICompilerCount=1
  *                  -XX:+DoEscapeAnalysis -XX:-EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:+UseBiasedLocking
- *                  GetOwnedMonitorStackDepthInfoWithEATest
+ *                  GetOwnedMonitorInfoWithEATest
  * @run main/othervm/native
- *                  -agentlib:GetOwnedMonitorStackDepthInfoWithEATest
+ *                  -agentlib:GetOwnedMonitorInfoWithEATest
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
@@ -79,9 +79,9 @@
  *                  -Xbatch
  *                  -XX:CICompilerCount=1
  *                  -XX:-DoEscapeAnalysis -XX:-EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:+UseBiasedLocking
- *                  GetOwnedMonitorStackDepthInfoWithEATest
+ *                  GetOwnedMonitorInfoWithEATest
  * @run main/othervm/native
- *                  -agentlib:GetOwnedMonitorStackDepthInfoWithEATest
+ *                  -agentlib:GetOwnedMonitorInfoWithEATest
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
@@ -92,9 +92,9 @@
  *                  -Xbatch
  *                  -XX:CICompilerCount=1
  *                  -XX:+DoEscapeAnalysis -XX:+EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:-UseBiasedLocking
- *                  GetOwnedMonitorStackDepthInfoWithEATest
+ *                  GetOwnedMonitorInfoWithEATest
  * @run main/othervm/native
- *                  -agentlib:GetOwnedMonitorStackDepthInfoWithEATest
+ *                  -agentlib:GetOwnedMonitorInfoWithEATest
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
@@ -105,9 +105,9 @@
  *                  -Xbatch
  *                  -XX:CICompilerCount=1
  *                  -XX:+DoEscapeAnalysis -XX:-EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:-UseBiasedLocking
- *                  GetOwnedMonitorStackDepthInfoWithEATest
+ *                  GetOwnedMonitorInfoWithEATest
  * @run main/othervm/native
- *                  -agentlib:GetOwnedMonitorStackDepthInfoWithEATest
+ *                  -agentlib:GetOwnedMonitorInfoWithEATest
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
@@ -118,21 +118,21 @@
  *                  -Xbatch
  *                  -XX:CICompilerCount=1
  *                  -XX:-DoEscapeAnalysis -XX:-EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:-UseBiasedLocking
- *                  GetOwnedMonitorStackDepthInfoWithEATest
+ *                  GetOwnedMonitorInfoWithEATest
  */
 
 import jdk.test.lib.Asserts;
 
 // TODO: revise section above
 
-public class GetOwnedMonitorStackDepthInfoWithEATest {
+public class GetOwnedMonitorInfoWithEATest {
 
     public static final int COMPILE_THRESHOLD = 20000;
 
-    public static native int getOwnedMonitorStackDepthInfo(Thread t1, Object[] ownedMonitors, int[] depths);
+    public static native int getOwnedMonitorInfo(Thread t1, Object[] ownedMonitors);
 
     public static void main(String[] args) throws Exception {
-        new GetOwnedMonitorStackDepthInfoWithEATest().runTest();
+        new GetOwnedMonitorInfoWithEATest().runTest();
     }
 
     public void runTest() throws Exception {
@@ -221,20 +221,18 @@ public class GetOwnedMonitorStackDepthInfoWithEATest {
             int expectedMonitorCount = 1;
             int resultSize = expectedMonitorCount + 3;
             Object[] ownedMonitors = new Object[resultSize];
-            int[]    depths = new int[resultSize];
             msg("Get monitor info");
-            int monitorCount = getOwnedMonitorStackDepthInfo(t1, ownedMonitors, depths);
+            int monitorCount = getOwnedMonitorInfo(t1, ownedMonitors);
             terminateEndlessLoop();
             t1.join();
             Asserts.assertGreaterThanOrEqual(monitorCount, 0, "getOwnedMonitorsFor() call failed");
             msg("Monitor info:");
             for (int i = 0; i < monitorCount; i++) {
-                System.out.println(i + ": cls=" + (ownedMonitors[i] != null ? ownedMonitors[i].getClass() : null) + " depth=" + depths[i]);
+                System.out.println(i + ": cls=" + (ownedMonitors[i] != null ? ownedMonitors[i].getClass() : null));
             }
             Asserts.assertEQ(monitorCount, expectedMonitorCount, "unexpected monitor count returned by getOwnedMonitorsFor()");
             Asserts.assertNotNull(ownedMonitors[0]);
             Asserts.assertSame(ownedMonitors[0].getClass(), LockCls.class);
-            Asserts.assertEQ(depths[0], 1, "unexpected depth for owned monitor at index 0");
         }
 
         public void dontinline_testMethod() {
@@ -261,24 +259,21 @@ public class GetOwnedMonitorStackDepthInfoWithEATest {
             int expectedMonitorCount = 2;
             int resultSize = expectedMonitorCount + 3;
             Object[] ownedMonitors = new Object[resultSize];
-            int[]    depths = new int[resultSize];
             msg("Get monitor info");
-            int monitorCount = getOwnedMonitorStackDepthInfo(t1, ownedMonitors, depths);
+            int monitorCount = getOwnedMonitorInfo(t1, ownedMonitors);
             terminateEndlessLoop();
             t1.join();
             Asserts.assertGreaterThanOrEqual(monitorCount, 0, "getOwnedMonitorsFor() call failed");
             msg("Monitor info:");
             for (int i = 0; i < monitorCount; i++) {
-                System.out.println(i + ": cls=" + (ownedMonitors[i] != null ? ownedMonitors[i].getClass() : null) + " depth=" + depths[i]);
+                System.out.println(i + ": cls=" + (ownedMonitors[i] != null ? ownedMonitors[i].getClass() : null));
             }
             Asserts.assertEQ(monitorCount, expectedMonitorCount, "unexpected monitor count returned by getOwnedMonitorsFor()");
             Asserts.assertNotNull(ownedMonitors[0]);
             Asserts.assertSame(ownedMonitors[0].getClass(), LockCls2.class);
-            Asserts.assertEQ(depths[0], 1, "unexpected depth for owned monitor at index 0");
 
             Asserts.assertNotNull(ownedMonitors[1]);
             Asserts.assertSame(ownedMonitors[1].getClass(), LockCls.class);
-            Asserts.assertEQ(depths[1], 3, "unexpected depth for owned monitor at index 1");
         }
 
         public void dontinline_testMethod() {
