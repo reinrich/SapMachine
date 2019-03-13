@@ -239,6 +239,7 @@ class EATestsTarget {
         new EARelockingArgEscapeLWLockedInCalleeFrameTarget().run();
         new EAGetOwnedMonitorsTarget()               .run();
         new EAEntryCountTarget()                     .run();
+        new EARelockingObjectCurrentlyWaitingOnTarget().run();
 
         // Test cases that require deoptimization even though neither
         // locks nor allocations are eliminated at the point where
@@ -340,6 +341,7 @@ public class EATests extends TestScaffold {
         new EARelockingArgEscapeLWLockedInCalleeFrame().setScaffold(this).run();
         new EAGetOwnedMonitors()               .setScaffold(this).run();
         new EAEntryCount()                     .setScaffold(this).run();
+        new EARelockingObjectCurrentlyWaitingOn().setScaffold(this).run();
 
         // Test cases that require deoptimization even though neither
         // locks nor allocations are eliminated at the point where
@@ -729,20 +731,24 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
     public static final    Long CONST_3_OBJ     = Long.valueOf(3);
 
     public void run() {
-        if (shouldSkip()) {
-            msg("skipping " + testCaseName);
-            return;
+        try {
+            if (shouldSkip()) {
+                msg("skipping " + testCaseName);
+                return;
+            }
+            setUp();
+            msg(testCaseName + " is up and running.");
+            compileTestMethod();
+            msg(testCaseName + " warmup done.");
+            warmupDone();
+            checkCompLevel();
+            dontinline_testMethod();
+            checkResult();
+            msg(testCaseName + " done.");
+            testCaseDone();
+        } catch (Exception e) {
+            Asserts.fail("Caught unexpected exception", e);
         }
-        setUp();
-        msg(testCaseName + " is up and running.");
-        compileTestMethod();
-        msg(testCaseName + " warmup done.");
-        warmupDone();
-        checkCompLevel();
-        dontinline_testMethod();
-        checkResult();
-        msg(testCaseName + " done.");
-        testCaseDone();
     }
 
     public static void staticSetUp() {
@@ -784,7 +790,7 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
         testMethodName = TESTMETHOD_DEFAULT_NAME;
     }
 
-    public abstract void dontinline_testMethod();
+    public abstract void dontinline_testMethod() throws Exception;
 
     public int dontinline_brkpt_iret() {
         dontinline_brkpt();
@@ -833,7 +839,7 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
     public void testCaseDone() {
     }
 
-    public void compileTestMethod() {
+    public void compileTestMethod() throws Exception {
         int callCount = COMPILE_THRESHOLD + 1000;
         while (callCount-- > 0) {
             dontinline_testMethod();
@@ -1643,6 +1649,89 @@ class EARelockingArgEscapeLWLockedInCalleeFrameTarget extends EATestCaseBaseTarg
     }
 }
 
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Test relocking eliminated (nested) locks of an object on which the
+ * target thread currently waits.
+ */
+class EARelockingObjectCurrentlyWaitingOn extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        env.targetMainThread.resume();
+        boolean inWait = false;
+        waitUntilTargetHasEnteredEndlessLoop();
+        do {
+            env.targetMainThread.suspend();
+            printStack(env.targetMainThread);
+            inWait = env.targetMainThread.frame(0).location().method().name().equals("wait");
+            if (!inWait) {
+                msg("resume then suspend until stopped in java.lang.Object.wait(long)");
+                env.targetMainThread.resume();
+                Thread.sleep(50);
+            } 
+        } while(!inWait);
+        StackFrame testMethodFrame = env.targetMainThread.frame(3);
+        // Access triggers relocking of all eliminated locks, including nested locks of l1 which references
+        // the object on which the target main thread is currently waiting.
+        ObjectReference l0 = getLocalRef(testMethodFrame, EARelockingObjectCurrentlyWaitingOnTarget.ForLocking.class.getName(), "l0");
+        Asserts.assertEQ(l0.entryCount(), 1, "wrong entry count");
+        ObjectReference l1 = getLocalRef(testMethodFrame, EARelockingObjectCurrentlyWaitingOnTarget.ForLocking.class.getName(), "l1");
+        Asserts.assertEQ(l1.entryCount(), 0, "wrong entry count");
+        setField(testCase, "shouldWait", env.vm().mirrorOf(false));
+    }
+}
+
+class EARelockingObjectCurrentlyWaitingOnTarget extends EATestCaseBaseTarget {
+
+    public static class ForLocking {
+    }
+
+    private boolean shouldWait;
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+        shouldWait = true;
+    }
+
+    @Override
+    public boolean testFrameShouldBeDeoptimized() {
+        return false;
+    }
+
+    @Override
+    public void dontinline_testMethod() throws Exception {
+        ForLocking l0 = new ForLocking(); // will be scalar replaced; access triggers realloc/relock
+        ForLocking l1 = new ForLocking();
+        synchronized (l0) {
+            synchronized (l1) {
+                testMethod_inlined(l1);
+            }
+        }
+    }
+
+    public void testMethod_inlined(ForLocking l2) throws Exception {
+        synchronized (l2) {                 // eliminated nested locking
+            dontinline_waitWhenWarmupDone(l2);
+        }
+    }
+
+    public void dontinline_waitWhenWarmupDone(ForLocking l2) throws Exception {
+        while (warmupDone && shouldWait) {
+            targetIsInLoop = true;
+            l2.wait(100);
+        }
+        targetIsInLoop = false;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Test cases that require deoptimization even though neither locks
+// nor allocations are eliminated at the point where escape state is changed.
+//
 /////////////////////////////////////////////////////////////////////////////
 
 /**

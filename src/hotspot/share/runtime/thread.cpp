@@ -1608,7 +1608,7 @@ void JavaThread::initialize() {
   set_vm_result_2(NULL);
   set_vframe_array_head(NULL);
   set_vframe_array_last(NULL);
-  set_deferred_locals(NULL);
+  reset_deferred_updates();
   set_deopt_mark(NULL);
   set_deopt_compiled_method(NULL);
   clear_must_deopt_id();
@@ -1794,7 +1794,7 @@ JavaThread::~JavaThread() {
       // individual jvmtiDeferredLocalVariableSet are CHeapObj's
       delete dlv;
     } while (deferred->length() != 0);
-    delete deferred;
+    delete deferred_updates();
   }
 
   // All Java related clean up happens in exit

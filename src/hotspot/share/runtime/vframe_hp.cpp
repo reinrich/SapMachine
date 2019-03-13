@@ -118,8 +118,8 @@ void compiledVFrame::update_deferred_value(BasicType type, int index, jvalue val
   } else {
     // No deferred updates pending for this thread.
     // allocate in C heap
-    deferred =  new(ResourceObj::C_HEAP, mtCompiler) GrowableArray<jvmtiDeferredLocalVariableSet*> (1, true);
-    thread()->set_deferred_locals(deferred);
+    thread()->allocate_deferred_updates();
+    deferred = thread()->deferred_locals();
   }
   if (locals == NULL) {
     locals = new jvmtiDeferredLocalVariableSet(method(), bci(), fr().id(), vframe_id());

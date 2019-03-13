@@ -984,6 +984,34 @@ class CompilerThread;
 
 typedef void (*ThreadFunction)(JavaThread*, TRAPS);
 
+// Holds updates for compiled frames by JVMTI agents that cannot be performed immediately.
+class JvmtiDeferredUpdates : public CHeapObj<mtCompiler> {
+
+  // Relocking has to be deferred, if the lock owning thread is currently waiting on the monitor.
+  int _relock_count_after_wait;
+
+  // Deferred updates of locals, expressions and monitors
+  GrowableArray<jvmtiDeferredLocalVariableSet*> _deferred_locals_updates;
+
+ public:
+  JvmtiDeferredUpdates() :
+    _relock_count_after_wait(0),
+    _deferred_locals_updates((ResourceObj::set_allocation_type((address) &_deferred_locals_updates,
+                              ResourceObj::C_HEAP), 1), true, mtCompiler) { }
+
+  GrowableArray<jvmtiDeferredLocalVariableSet*>* deferred_locals() { return &_deferred_locals_updates; }
+
+  int get_and_reset_relock_count_after_wait() {
+    int result = _relock_count_after_wait;
+    _relock_count_after_wait = 0;
+    return result;
+  }
+  void inc_relock_count_after_wait() {
+    _relock_count_after_wait++;
+  }
+};
+
+
 class JavaThread: public Thread {
   friend class VMStructs;
   friend class JVMCIVMStructs;
@@ -1029,11 +1057,10 @@ class JavaThread: public Thread {
   CompiledMethod*       _deopt_nmethod;         // CompiledMethod that is currently being deoptimized
   vframeArray*  _vframe_array_head;              // Holds the heap of the active vframeArrays
   vframeArray*  _vframe_array_last;              // Holds last vFrameArray we popped
-  // Because deoptimization is lazy we must save jvmti requests to set locals
-  // in compiled frames until we deoptimize and we have an interpreter frame.
-  // This holds the pointer to array (yeah like there might be more than one) of
-  // description of compiled vframes that have locals that need to be updated.
-  GrowableArray<jvmtiDeferredLocalVariableSet*>* _deferred_locals_updates;
+  // Holds updates for compiled frames by JVMTI agents that cannot be performed immediately. They
+  // will be carried out as soon as possible, which, in most cases, is just before deoptimization of
+  // the frame, when control returns to it.
+  JvmtiDeferredUpdates* _jvmti_deferred_updates;
 
   // Handshake value for fixing 6243940. We need a place for the i2c
   // adapter to store the callee Method*. This value is NEVER live
@@ -1508,8 +1535,24 @@ class JavaThread: public Thread {
   vframeArray* vframe_array_head() const         { return _vframe_array_head;  }
 
   // Side structure for deferring update of java frame locals until deopt occurs
-  GrowableArray<jvmtiDeferredLocalVariableSet*>* deferred_locals() const { return _deferred_locals_updates; }
-  void set_deferred_locals(GrowableArray<jvmtiDeferredLocalVariableSet *>* vf) { _deferred_locals_updates = vf; }
+  JvmtiDeferredUpdates* deferred_updates() const { return _jvmti_deferred_updates; }
+  void reset_deferred_updates()                  { _jvmti_deferred_updates = NULL; }
+  void allocate_deferred_updates() {
+    assert(_jvmti_deferred_updates == NULL, "already allocated");
+    _jvmti_deferred_updates = new JvmtiDeferredUpdates();
+  }
+  GrowableArray<jvmtiDeferredLocalVariableSet*>* deferred_locals() const { return _jvmti_deferred_updates == NULL ? NULL : _jvmti_deferred_updates->deferred_locals(); }
+
+  // Relocking has to be deferred, if the lock owning thread is currently waiting on the monitor.
+  int get_and_reset_relock_count_after_wait() {
+    return deferred_updates() == NULL ? 0 : deferred_updates()->get_and_reset_relock_count_after_wait();
+  }
+  void inc_relock_count_after_wait() {
+    if (deferred_updates() == NULL) {
+      allocate_deferred_updates();
+    }
+    deferred_updates()->inc_relock_count_after_wait();
+  }
 
   // These only really exist to make debugging deopt problems simpler
 

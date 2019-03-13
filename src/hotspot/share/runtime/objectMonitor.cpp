@@ -1382,7 +1382,8 @@ void ObjectMonitor::wait(jlong millis, bool interruptible, TRAPS) {
   jt->set_current_waiting_monitor(NULL);
 
   guarantee(_recursions == 0, "invariant");
-  _recursions = save;     // restore the old recursion count
+  _recursions = save      // restore the old recursion count
+                + jt->get_and_reset_relock_count_after_wait(); //  increased by the deferred relock count
   _waiters--;             // decrement the number of waiters
 
   // Verify a few postconditions

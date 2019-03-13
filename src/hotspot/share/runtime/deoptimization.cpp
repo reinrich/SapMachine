@@ -653,9 +653,10 @@ Deoptimization::UnrollBlock* Deoptimization::fetch_unroll_info_helper(JavaThread
       }
     } while ( i < list->length() );
     if (list->length() == 0) {
-      thread->set_deferred_locals(NULL);
-      // free the list and elements back to C heap.
-      delete list;
+      JvmtiDeferredUpdates* updates = thread->deferred_updates();
+      thread->reset_deferred_updates();
+      // free deferred updates.
+      delete updates;
     }
 
   }
@@ -1429,13 +1430,24 @@ bool Deoptimization::relock_objects(JavaThread* thread, GrowableArray<MonitorInf
           // Reset mark word to unbiased prototype.
           markOop unbiased_prototype = markOopDesc::prototype()->set_age(mark->age());
           obj->set_mark(unbiased_prototype);
-        } else if (exec_mode == Unpack_none && mark->has_locker() && fr->sp() > (intptr_t*)mark->locker()) {
-          // With exec_mode == Unpack_none obj may be thread local and locked in
-          // a callee frame. In this case the bias was revoked before.
-          // Make the lock in the callee a recursive lock and restore the displaced header.
-          markOop dmw = mark->displaced_mark_helper();
-          mark->locker()->set_displaced_header(NULL);
-          obj->set_mark(dmw);
+        } else if (exec_mode == Unpack_none) {
+          if (mark->has_locker() && fr->sp() > (intptr_t*)mark->locker()) {
+            // With exec_mode == Unpack_none obj may be thread local and locked in
+            // a callee frame. In this case the bias was revoked before.
+            // Make the lock in the callee a recursive lock and restore the displaced header.
+            markOop dmw = mark->displaced_mark_helper();
+            mark->locker()->set_displaced_header(NULL);
+            obj->set_mark(dmw);
+          }
+          if (mark->has_monitor()) {
+            // defer relocking if the deoptee thread is currently waiting for obj
+            ObjectMonitor* waiting_monitor = deoptee_thread->current_waiting_monitor();
+            if (waiting_monitor != NULL && (oop)waiting_monitor->object() == obj()) {
+              lock->set_displaced_header(markOopDesc::unused_mark());
+              deoptee_thread->inc_relock_count_after_wait();
+              continue;
+            }
+          }
         }
         ObjectSynchronizer::slow_enter(obj, lock, deoptee_thread);
         assert(mon_info->owner()->is_locked(), "object must be locked now");
