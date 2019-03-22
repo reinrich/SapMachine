@@ -1485,6 +1485,11 @@ void JvmtiTagMap::iterate_over_heap(jvmtiHeapObjectFilter object_filter,
                                     jvmtiHeapObjectCallback heap_object_callback,
                                     const void* user_data)
 {
+  // Reallocate scalar replaced objects to the heap. Already tagged objects must have been
+  // reallocated already.
+  EADeoptimizationControl dc(JavaThread::current(),
+      object_filter == JVMTI_HEAP_OBJECT_UNTAGGED || object_filter == JVMTI_HEAP_OBJECT_EITHER);
+  Deoptimization::deoptimize_objects_all_threads(dc);
   MutexLocker ml(Heap_lock);
   IterateOverHeapObjectClosure blk(this,
                                    klass,

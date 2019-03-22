@@ -118,6 +118,37 @@ Agent_Initialize(JavaVM *jvm, char *options, void *reserved) {
     return JNI_OK;
 }
 
+static jobject method_IterateOverReachableObjects;
+static jobject method_IterateOverHeap;
+static jobject method_IterateOverInstancesOfClass;
+
+JNIEXPORT jint JNICALL
+Java_IterateHeapWithActiveEscapeAnalysis_registerMethod(JNIEnv *env, jclass cls, jobject method, jstring name) {
+  const char *name_chars = (*env)->GetStringUTFChars(env, name, 0);
+  int rc = FAILED;
+  if (rc != OK && strcmp(name_chars, "IterateOverReachableObjects") == 0) {
+    method_IterateOverReachableObjects = (*env)->NewGlobalRef(env, method);
+    rc = OK;
+  }
+  if (rc != OK && strcmp(name_chars, "IterateOverHeap") == 0) {
+    method_IterateOverHeap = (*env)->NewGlobalRef(env, method);
+    rc = OK;
+  }
+  if (rc != OK && strcmp(name_chars, "IterateOverInstancesOfClass") == 0) {
+    method_IterateOverInstancesOfClass = (*env)->NewGlobalRef(env, method);
+    rc = OK;
+  }
+  (*env)->ReleaseStringUTFChars(env, name, name_chars);
+  return rc;
+}
+
+JNIEXPORT void JNICALL
+Java_IterateHeapWithActiveEscapeAnalysis_agentTearDown(JNIEnv *env, jclass cls) {
+  (*env)->DeleteGlobalRef(env, method_IterateOverReachableObjects);
+  (*env)->DeleteGlobalRef(env, method_IterateOverHeap);
+  (*env)->DeleteGlobalRef(env, method_IterateOverInstancesOfClass);
+}
+
 JNIEXPORT jint JNICALL
 Java_IterateHeapWithActiveEscapeAnalysis_jvmtiTagClass(JNIEnv *env, jclass cls, jclass clsToTag, jlong tag) {
     jvmtiError err;
@@ -135,8 +166,8 @@ typedef struct Tag_And_Counter {
     jlong class_tag;
 } Tag_And_Counter;
 
-JNIEXPORT jvmtiIterationControl JNICALL
-stackReferenceCallback(jvmtiHeapRootKind root_kind,
+static jvmtiIterationControl JNICALL
+__stackReferenceCallback(jvmtiHeapRootKind root_kind,
                        jlong class_tag,
                        jlong size,
                        jlong* tag_ptr,
@@ -152,21 +183,64 @@ stackReferenceCallback(jvmtiHeapRootKind root_kind,
     return JVMTI_ITERATION_CONTINUE;
 }
 
+static jvmtiIterationControl JNICALL
+__jvmtiHeapObjectCallback(jlong class_tag, jlong size, jlong* tag_ptr, void* d) {
+    Tag_And_Counter* data = (Tag_And_Counter*) d;
+    if (class_tag == data->class_tag) {
+        data->instance_counter++;
+    }
+    return JVMTI_ITERATION_CONTINUE;
+}
+
 JNIEXPORT jlong JNICALL
-Java_IterateHeapWithActiveEscapeAnalysis_countInstancesOfClass(JNIEnv *env, jclass cls, jlong clsTag) {
+Java_IterateHeapWithActiveEscapeAnalysis_countInstancesOfClass(JNIEnv *env, jclass cls, jclass scalar_repl_cls, jlong clsTag, jobject method) {
     jvmtiError err;
     Tag_And_Counter data = {0, clsTag};
+    jboolean method_found = JNI_FALSE;
 
     jint idx = 0;
 
-    err = (*jvmti)->IterateOverReachableObjects(jvmti,
-                                                NULL /*jvmtiHeapRootCallback*/,
-                                                stackReferenceCallback,
-                                                NULL /* jvmtiObjectReferenceCallback */,
-                                                &data);
-    if (err != JVMTI_ERROR_NONE) {
-        ShowErrorMessage(jvmti, err,
-                         "countInstancesOfClass: error in JVMTI IterateOverReachableObjects");
+    if ((*env)->IsSameObject(env, method, method_IterateOverReachableObjects)) {
+        method_found = JNI_TRUE;
+        err = (*jvmti)->IterateOverReachableObjects(jvmti,
+                                                    NULL /*jvmtiHeapRootCallback*/,
+                                                    __stackReferenceCallback,
+                                                    NULL /* jvmtiObjectReferenceCallback */,
+                                                    &data);
+        if (err != JVMTI_ERROR_NONE) {
+            ShowErrorMessage(jvmti, err,
+                             "countInstancesOfClass: error in JVMTI IterateOverReachableObjects");
+            return FAILED;
+        }
+    }
+    if ((*env)->IsSameObject(env, method, method_IterateOverHeap)) {
+        method_found = JNI_TRUE;
+        err = (*jvmti)->IterateOverHeap(jvmti,
+                                        JVMTI_HEAP_OBJECT_EITHER,
+                                        __jvmtiHeapObjectCallback,
+                                        &data);
+        if (err != JVMTI_ERROR_NONE) {
+            ShowErrorMessage(jvmti, err,
+                             "countInstancesOfClass: error in JVMTI IterateOverHeap");
+            return FAILED;
+        }
+    }
+    if ((*env)->IsSameObject(env, method, method_IterateOverInstancesOfClass)) {
+        method_found = JNI_TRUE;
+        err = (*jvmti)->IterateOverInstancesOfClass(jvmti,
+                                                    scalar_repl_cls,
+                                                    JVMTI_HEAP_OBJECT_EITHER,
+                                                    __jvmtiHeapObjectCallback,
+                                                    &data);
+        if (err != JVMTI_ERROR_NONE) {
+            ShowErrorMessage(jvmti, err,
+                             "countInstancesOfClass: error in JVMTI IterateOverHeap");
+            return FAILED;
+        }
+    }
+
+    if (!method_found) {
+        fprintf(stderr, "countInstancesOfClass: unknown method\n");
         return FAILED;
     }
 

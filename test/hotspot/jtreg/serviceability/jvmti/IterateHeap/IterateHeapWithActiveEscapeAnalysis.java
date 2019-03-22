@@ -129,25 +129,51 @@ public class IterateHeapWithActiveEscapeAnalysis {
 
     public static final int COMPILE_THRESHOLD = 20000;
 
-    private static long currentTag;
+    public static final Class<?> SCALAR_REPLACEMENTS_CLASS = ABox.class;
+
+    public static final long CLASS_TAG = 2525;
 
     public static native int jvmtiTagClass(Class<?> cls, long tag);
-    
-    public static native int countInstancesOfClass(long clsTag);
+
+    public static enum InstanceCountMethod {
+        IterateOverReachableObjects,
+        IterateOverHeap,
+        IterateOverInstancesOfClass
+    }
+
+    public static native int registerMethod(InstanceCountMethod m, String name);
+    public static native void agentTearDown();
+
+    public static native int countInstancesOfClass(Class<?> scalarReplCls, long clsTag, InstanceCountMethod method);
 
     public static void main(String[] args) throws Exception {
         new IterateHeapWithActiveEscapeAnalysis().runTest();
     }
 
     public void runTest() throws Exception {
-        new TestCase_1().run();
+        setUp();
+        for(InstanceCountMethod m : InstanceCountMethod.values()) {
+            new TestCase(m).run();
+        }
+        agentTearDown();
     }
 
-    public static long getNextTag() {
-        return ++currentTag;
+    public static void setUp() {
+        // Tag the class of instances to be scalar replaced
+        msg("tagging " + SCALAR_REPLACEMENTS_CLASS.getName() + " with tag " +  CLASS_TAG);
+        jvmtiTagClass(SCALAR_REPLACEMENTS_CLASS, CLASS_TAG);
+
+        // register various instance counting methods with agent
+        for(InstanceCountMethod m : InstanceCountMethod.values()) {
+            msg("register instance count method " + m.name());
+            int rc = registerMethod(m, m.name());
+            Asserts.assertGreaterThanOrEqual(rc, 0, "method " + m.name() + " is unknown to agent");
+        }
     }
 
     public static abstract class TestCaseBase implements Runnable {
+
+        public InstanceCountMethod method;
 
         public long checkSum;
         public long loopCount;
@@ -156,9 +182,10 @@ public class IterateHeapWithActiveEscapeAnalysis {
 
         public void run() {
             try {
-                msgHL("Executing test case " + getClass().getName());
+                msgHL("Testing " + method.name());
                 setUp();
                 warmUp();
+                System.gc(); // get rid of dead instances from previous test cases
                 runTest();
             } catch (Exception e) {
                 Asserts.fail("Unexpected Exception", e);
@@ -202,38 +229,33 @@ public class IterateHeapWithActiveEscapeAnalysis {
             msg("Terminate endless loop");
             doLoop = false;
         }
+    }
 
-        public void msg(String m) {
-            System.out.println();
-            System.out.println("### " + m);
-            System.out.println();
-        }
-        
-        public void msgHL(String m) {
-            System.out.println();
-            System.out.println("#####################################################");
-            System.out.println("### " + m);
-            System.out.println("###");
-            System.out.println();
+    static class ABox {
+        public int val;
+
+        public ABox(int v) {
+            this.val = v;
         }
     }
 
-    public static class TestCase_1 extends TestCaseBase {
+    // Test IterateOverReachableObjects
+    public static class TestCase extends TestCaseBase {
+
+        public TestCase(InstanceCountMethod m) {
+            method = m;
+        }
 
         public void runTest() throws Exception {
-            Class<?> pCls = ABox.class;
-            long classTag = getNextTag();
-            msg("tagging " + pCls.getName() + " with tag " +  classTag);
-            jvmtiTagClass(pCls, classTag);
-
             loopCount = 1L << 62; // endless loop
             Thread t1 = new Thread(() -> dontinline_testMethod(), "Target Thread (" + getClass().getName() + ")");
             t1.start();
             try {
                 waitUntilTargetThreadHasEnteredEndlessLoop();
-                msg("count instances of " + pCls.getName() + " using JVMTI IterateOverReachableObjects");
-                int count = countInstancesOfClass(classTag);
+                msg("count instances of " + SCALAR_REPLACEMENTS_CLASS.getName() + " using JVMTI " + method.name());
+                int count = countInstancesOfClass(SCALAR_REPLACEMENTS_CLASS, CLASS_TAG, method);
                 msg("Done. Count is " + count);
+                Asserts.assertGreaterThanOrEqual(count, 0, "countInstancesOfClass FAILED");
                 Asserts.assertEQ(count, 1, "unexpected number of instances");
                 
             } finally {
@@ -242,20 +264,24 @@ public class IterateHeapWithActiveEscapeAnalysis {
             }
         }
 
-        class ABox {
-            public int val;
-
-            public ABox(int v) {
-                this.val = v;
-            }
-        }
-
         public void dontinline_testMethod() {
             ABox b = new ABox(4);
             dontinline_endlessLoop();
             checkSum = b.val;
         }
-
     }
 
+    public static void msg(String m) {
+        System.out.println();
+        System.out.println("### " + m);
+        System.out.println();
+    }
+
+    public static void msgHL(String m) {
+        System.out.println(); System.out.println(); System.out.println();
+        System.out.println("#####################################################");
+        System.out.println("### " + m);
+        System.out.println("###");
+        System.out.println();
+    }
 }
