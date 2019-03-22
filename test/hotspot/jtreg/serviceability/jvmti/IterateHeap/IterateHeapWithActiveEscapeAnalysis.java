@@ -52,19 +52,6 @@
  *                  -XX:-TieredCompilation
  *                  -Xbatch
  *                  -XX:CICompilerCount=1
- *                  -XX:+DoEscapeAnalysis -XX:+EliminateAllocations -XX:-EliminateLocks -XX:+EliminateNestedLocks -XX:+UseBiasedLocking -XX:-UseOptoBiasInlining
- *                  IterateHeapWithActiveEscapeAnalysis
- * @run main/othervm/native
- *                  -agentlib:IterateHeapWithActiveEscapeAnalysis
- *                  -XX:+UnlockDiagnosticVMOptions
- *                  -Xms32m -Xmx32m
- *                  -XX:CompileCommand=dontinline,*::dontinline_*
- *                  -XX:+TraceDeoptimization
- *                  -XX:+PrintCompilation
- *                  -XX:+PrintInlining
- *                  -XX:-TieredCompilation
- *                  -Xbatch
- *                  -XX:CICompilerCount=1
  *                  -XX:+DoEscapeAnalysis -XX:-EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:+UseBiasedLocking
  *                  IterateHeapWithActiveEscapeAnalysis
  * @run main/othervm/native
@@ -79,45 +66,6 @@
  *                  -Xbatch
  *                  -XX:CICompilerCount=1
  *                  -XX:-DoEscapeAnalysis -XX:-EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:+UseBiasedLocking
- *                  IterateHeapWithActiveEscapeAnalysis
- * @run main/othervm/native
- *                  -agentlib:IterateHeapWithActiveEscapeAnalysis
- *                  -XX:+UnlockDiagnosticVMOptions
- *                  -Xms32m -Xmx32m
- *                  -XX:CompileCommand=dontinline,*::dontinline_*
- *                  -XX:+TraceDeoptimization
- *                  -XX:+PrintCompilation
- *                  -XX:+PrintInlining
- *                  -XX:-TieredCompilation
- *                  -Xbatch
- *                  -XX:CICompilerCount=1
- *                  -XX:+DoEscapeAnalysis -XX:+EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:-UseBiasedLocking
- *                  IterateHeapWithActiveEscapeAnalysis
- * @run main/othervm/native
- *                  -agentlib:IterateHeapWithActiveEscapeAnalysis
- *                  -XX:+UnlockDiagnosticVMOptions
- *                  -Xms32m -Xmx32m
- *                  -XX:CompileCommand=dontinline,*::dontinline_*
- *                  -XX:+TraceDeoptimization
- *                  -XX:+PrintCompilation
- *                  -XX:+PrintInlining
- *                  -XX:-TieredCompilation
- *                  -Xbatch
- *                  -XX:CICompilerCount=1
- *                  -XX:+DoEscapeAnalysis -XX:-EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:-UseBiasedLocking
- *                  IterateHeapWithActiveEscapeAnalysis
- * @run main/othervm/native
- *                  -agentlib:IterateHeapWithActiveEscapeAnalysis
- *                  -XX:+UnlockDiagnosticVMOptions
- *                  -Xms32m -Xmx32m
- *                  -XX:CompileCommand=dontinline,*::dontinline_*
- *                  -XX:+TraceDeoptimization
- *                  -XX:+PrintCompilation
- *                  -XX:+PrintInlining
- *                  -XX:-TieredCompilation
- *                  -Xbatch
- *                  -XX:CICompilerCount=1
- *                  -XX:-DoEscapeAnalysis -XX:-EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:-UseBiasedLocking
  *                  IterateHeapWithActiveEscapeAnalysis
  */
 
@@ -171,7 +119,15 @@ public class IterateHeapWithActiveEscapeAnalysis {
         }
     }
 
-    public static abstract class TestCaseBase implements Runnable {
+    static class ABox {
+        public int val;
+
+        public ABox(int v) {
+            this.val = v;
+        }
+    }
+
+    public static class TestCase implements Runnable {
 
         public InstanceCountMethod method;
 
@@ -183,7 +139,6 @@ public class IterateHeapWithActiveEscapeAnalysis {
         public void run() {
             try {
                 msgHL("Testing " + method.name());
-                setUp();
                 warmUp();
                 System.gc(); // get rid of dead instances from previous test cases
                 runTest();
@@ -198,12 +153,6 @@ public class IterateHeapWithActiveEscapeAnalysis {
                 dontinline_testMethod();
             }
         }
-
-        public void setUp() {
-        }
-
-        public abstract void runTest() throws Exception;
-        public abstract void dontinline_testMethod();
 
         public long dontinline_endlessLoop() {
             long cs = checkSum;
@@ -229,20 +178,8 @@ public class IterateHeapWithActiveEscapeAnalysis {
             msg("Terminate endless loop");
             doLoop = false;
         }
-    }
 
-    static class ABox {
-        public int val;
-
-        public ABox(int v) {
-            this.val = v;
-        }
-    }
-
-    // Test IterateOverReachableObjects
-    public static class TestCase extends TestCaseBase {
-
-        public TestCase(InstanceCountMethod m) {
+       public TestCase(InstanceCountMethod m) {
             method = m;
         }
 
@@ -257,7 +194,6 @@ public class IterateHeapWithActiveEscapeAnalysis {
                 msg("Done. Count is " + count);
                 Asserts.assertGreaterThanOrEqual(count, 0, "countInstancesOfClass FAILED");
                 Asserts.assertEQ(count, 1, "unexpected number of instances");
-                
             } finally {
                 terminateEndlessLoop();
                 t1.join();
