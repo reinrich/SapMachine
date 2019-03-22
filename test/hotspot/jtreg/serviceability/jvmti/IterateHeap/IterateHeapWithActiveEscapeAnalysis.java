@@ -233,7 +233,8 @@ public class IterateHeapWithActiveEscapeAnalysis {
                 waitUntilTargetThreadHasEnteredEndlessLoop();
                 msg("count instances of " + pCls.getName() + " using JVMTI IterateOverReachableObjects");
                 int count = countInstancesOfClass(classTag);
-                Asserts.assertEQ(count, 99, "unexpected number of instances");
+                msg("Done. Count is " + count);
+                Asserts.assertEQ(count, 1, "unexpected number of instances");
                 
             } finally {
                 terminateEndlessLoop();

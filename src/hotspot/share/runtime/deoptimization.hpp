@@ -186,6 +186,7 @@ JVMCI_ONLY(public:)
   static bool deoptimize_objects(EADeoptimizationControl& dc, compiledVFrame* cvf)                   NOT_COMPILER2_OR_JVMCI_RETURN_(true);
   static bool deoptimize_objects(EADeoptimizationControl& dc, intptr_t* fr_id)                       NOT_COMPILER2_OR_JVMCI_RETURN_(true);
   static bool deoptimize_objects(EADeoptimizationControl& dc, int depth)                             NOT_COMPILER2_OR_JVMCI_RETURN_(true);
+  static bool deoptimize_objects_all_threads(EADeoptimizationControl& dc)                            NOT_COMPILER2_OR_JVMCI_RETURN_(true);
 
   static vframeArray* create_vframeArray(JavaThread* thread, frame fr, RegisterMap *reg_map, GrowableArray<compiledVFrame*>* chunk, bool realloc_failures);
 
@@ -474,36 +475,53 @@ JVMCI_ONLY(public:)
   static void update_method_data_from_interpreter(MethodData* trap_mdo, int trap_bci, int reason);
 };
 
+// Control and synchronize reverting optimizations based on escape analysis
 class EADeoptimizationControl : StackObj {
   JavaThread* const _calling_thread;
   JavaThread* const _deoptee_thread;
-  bool              _did_suspend;
+  bool        const _should_deopt;
+
+#ifdef COMPILER2_OR_JVMCI
+  void sync_and_suspend_one();
+  void sync_and_suspend_all();
+  void resume_one();
+  void resume_all();
+#endif // COMPILER2_OR_JVMCI
 
 public:
-  EADeoptimizationControl(JavaThread* calling_thread, JavaThread* deoptee_thread)
-    : _calling_thread(calling_thread), _deoptee_thread(deoptee_thread), _did_suspend(false) {
-    COMPILER2_OR_JVMCI_PRESENT(sync_and_suspend_for_object_deoptimization());
+  // Revert ea based optimizations for given deoptee thread
+  EADeoptimizationControl(JavaThread* calling_thread, JavaThread* deoptee_thread, bool should_deopt)
+    : _calling_thread(calling_thread), _deoptee_thread(deoptee_thread), _should_deopt(should_deopt)
+  {
+    COMPILER2_OR_JVMCI_PRESENT(if (_should_deopt) sync_and_suspend_one());
+  }
+
+  // Revert ea based optimizations for all java threads
+  EADeoptimizationControl(JavaThread* calling_thread, bool should_deopt)
+    : _calling_thread(calling_thread), _deoptee_thread(NULL), _should_deopt(should_deopt)
+  {
+    COMPILER2_OR_JVMCI_PRESENT(if (_should_deopt) sync_and_suspend_all());
   }
 
 #ifdef COMPILER2_OR_JVMCI
   ~EADeoptimizationControl() {
-    if (_calling_thread == _deoptee_thread) {
-      JvmtiObjReallocRelock_lock->unlock();
-    }
-    if (_did_suspend) {
-      resume_after_object_deoptimization();
+    if (!should_deopt()) return;
+    if (all_threads()) {
+      resume_all();
+    } else {
+      resume_one();
     }
   }
 
-  void sync_and_suspend_for_object_deoptimization();
-  void resume_after_object_deoptimization();
+
+  bool all_threads()  const { return _deoptee_thread == NULL; }            // Should revert deoptimization in all threads.
+  bool self_deopt()   const { return _calling_thread == _deoptee_thread; } // Current thread deoptimizes its own objects.
+  bool should_deopt() const { return _should_deopt; }                      // True if deoptimization can be skipped.
+
+  // accessors
+  JavaThread* calling_thread() const     { return _calling_thread; }
+  JavaThread* deoptee_thread() const     { return _deoptee_thread; }
 #endif // COMPILER2_OR_JVMCI
-
-  JavaThread* calling_thread() const         { return _calling_thread; }
-  JavaThread* deoptee_thread() const         { return _deoptee_thread; }
-
-  bool        did_suspend() const            {return _did_suspend; }
-  void    set_did_suspend(bool v)            { _did_suspend = v; }
 };
 
 class DeoptimizationMarker : StackObj {  // for profiling

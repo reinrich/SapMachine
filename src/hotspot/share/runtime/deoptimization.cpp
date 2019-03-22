@@ -193,11 +193,13 @@ void Deoptimization::set_objs_are_deoptimized(intptr_t* fr_id, JavaThread* threa
 }
 
 bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, compiledVFrame* cvf) {
+  assert(dc.should_deopt(), "should not call");
   frame f = cvf->fr();
   return deoptimize_objects(dc, &f, cvf->register_map());
 }
 
 bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, int depth) {
+  assert(dc.should_deopt(), "should not call");
   ResourceMark rm;
   HandleMark   hm;
   RegisterMap  reg_map(dc.deoptee_thread());
@@ -225,6 +227,7 @@ bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, int depth) 
 }
 
 bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, intptr_t* fr_id) {
+  assert(dc.should_deopt(), "should not call");
   // Compute frame and register map based on thread and sp.
   RegisterMap reg_map(dc.deoptee_thread());
   frame fr = dc.deoptee_thread()->last_frame();
@@ -235,17 +238,32 @@ bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, intptr_t* f
 }
 
 
-void EADeoptimizationControl::sync_and_suspend_for_object_deoptimization() {
+bool Deoptimization::deoptimize_objects_all_threads(EADeoptimizationControl& dc) {
+  assert(dc.should_deopt(), "should not call");
+  for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
+    if (!jt->has_last_Java_frame()) continue;
+    RegisterMap reg_map(jt);
+    for (frame fr = jt->last_frame(); !fr.is_first_frame(); fr = fr.sender(&reg_map)) {
+      if (fr.can_be_deoptimized() && !Deoptimization::deoptimize_objects(dc, &fr, &reg_map)) {
+        return false; // reallocation failure
+      }
+    }
+  }
+  return true; // success
+}
+
+
+void EADeoptimizationControl::sync_and_suspend_one() {
   assert(_calling_thread != NULL, "calling thread must not be NULL");
   assert(_deoptee_thread != NULL, "deoptee thread must not be NULL");
+  assert(should_deopt(), "should not call");
 
   JvmtiObjReallocRelock_lock->lock(_calling_thread);
   while (_deoptee_thread->is_deopt_suspend()) {
     JvmtiObjReallocRelock_lock->wait();
   }
 
-  if (_calling_thread == _deoptee_thread) {
-    // Calling thread is deoptimizing objects itself.
+  if (self_deopt()) {
     // No need to suspend, but keep JvmtiObjReallocRelock_lock locked!
     return;
   }
@@ -259,14 +277,71 @@ void EADeoptimizationControl::sync_and_suspend_for_object_deoptimization() {
     VM_ThreadSuspend vm_suspend;
     VMThread::execute(&vm_suspend);
   }
-  set_did_suspend(true);
+  assert(!_deoptee_thread->has_last_Java_frame() || _deoptee_thread->frame_anchor()->walkable(),
+         "stack should be walkable now");
 }
 
-void EADeoptimizationControl::resume_after_object_deoptimization() {
+class VM_ThreadSuspendAllForObjDeopt : public VM_Operation {
+  public:
+   VMOp_Type type() const { return VMOp_ThreadSuspendAllForObjDeopt; }
+   virtual void doit() {
+     Thread* ct = calling_thread();
+     for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
+       assert(!jt->is_ea_obj_deopt_suspend(), "bad synchronization");
+       if (ct != jt) {
+         jt->set_ea_obj_deopt_flag();
+       }
+     }
+   }
+};
+
+void EADeoptimizationControl::sync_and_suspend_all() {
+  assert(should_deopt(), "should not call");
+  assert(_calling_thread != NULL, "calling thread must not be NULL");
+  assert(all_threads(), "sanity");
+
+  // we keept JvmtiObjReallocRelock_lock, because this is also a self deoptimization
+  JvmtiObjReallocRelock_lock->lock(_calling_thread);
+  bool deopt_in_progress = false;
+  do {
+    for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
+      if (jt->is_deopt_suspend()) {
+        deopt_in_progress = true;
+        JvmtiObjReallocRelock_lock->wait();
+        break; // check all threads again
+      }
+    }
+  } while(deopt_in_progress);
+
+  VM_ThreadSuspendAllForObjDeopt vm_suspend_all;
+  VMThread::execute(&vm_suspend_all);
+#ifdef ASSERT
+  for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
+    assert(!jt->has_last_Java_frame() || jt->frame_anchor()->walkable(), "stacks should be walkable now");
+  }
+#endif // ASSERT
+}
+
+void EADeoptimizationControl::resume_one() {
+  assert(should_deopt(), "should not call");
+  if (self_deopt()) {
+    JvmtiObjReallocRelock_lock->unlock();
+    return;
+  }
   assert(_deoptee_thread->is_ea_obj_deopt_suspend(), "not suspended");
   MutexLocker ml(JvmtiObjReallocRelock_lock);
   _deoptee_thread->clear_ea_obj_deopt_flag();
   JvmtiObjReallocRelock_lock->notify_all();
+}
+
+void EADeoptimizationControl::resume_all() {
+  assert(should_deopt(), "should not call");
+  assert(all_threads(), "sanity");
+  for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
+    jt->clear_ea_obj_deopt_flag();
+  }
+  JvmtiObjReallocRelock_lock->notify_all();
+  JvmtiObjReallocRelock_lock->unlock();
 }
 
 // Reallocate stack allocated objects on the heap. Relock objects if locking has
@@ -280,9 +355,10 @@ void EADeoptimizationControl::resume_after_object_deoptimization() {
 // Returns false upon failure, true otherwise.
 bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, frame* fr, const RegisterMap *reg_map) {
   JavaThread* ct = dc.calling_thread();
-  JavaThread* deoptee_thread = dc.deoptee_thread();
+  JavaThread* deoptee_thread = reg_map->thread();
   bool realloc_failures = false;
 
+  assert(dc.should_deopt(), "should not call");
   assert(!Thread::current()->is_VM_thread(), "the VM thread cannot reallocate stack objects to the Java heap");
   assert(fr->is_compiled_frame(), "only compiled frames can contain stack allocated objects");
   assert(reg_map->update_map(), "e.g. for values in callee saved registers");
