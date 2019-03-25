@@ -193,13 +193,13 @@ void Deoptimization::set_objs_are_deoptimized(intptr_t* fr_id, JavaThread* threa
 }
 
 bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, compiledVFrame* cvf) {
-  assert(dc.should_deopt(), "should not call");
+  if (!dc.should_deopt()) return true;
   frame f = cvf->fr();
   return deoptimize_objects(dc, &f, cvf->register_map());
 }
 
 bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, int depth) {
-  assert(dc.should_deopt(), "should not call");
+  if (!dc.should_deopt()) return true;
   ResourceMark rm;
   HandleMark   hm;
   RegisterMap  reg_map(dc.deoptee_thread());
@@ -227,7 +227,7 @@ bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, int depth) 
 }
 
 bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, intptr_t* fr_id) {
-  assert(dc.should_deopt(), "should not call");
+  if (!dc.should_deopt()) return true;
   // Compute frame and register map based on thread and sp.
   RegisterMap reg_map(dc.deoptee_thread());
   frame fr = dc.deoptee_thread()->last_frame();
@@ -239,7 +239,7 @@ bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, intptr_t* f
 
 
 bool Deoptimization::deoptimize_objects_all_threads(EADeoptimizationControl& dc) {
-  assert(dc.should_deopt(), "should not call");
+  if (!dc.should_deopt()) return true;
   for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
     if (!jt->has_last_Java_frame()) continue;
     RegisterMap reg_map(jt);
@@ -354,11 +354,12 @@ void EADeoptimizationControl::resume_all() {
 // JvmtiObjReallocRelock_lock is used to sync concurrent JVMTI threads.
 // Returns false upon failure, true otherwise.
 bool Deoptimization::deoptimize_objects(EADeoptimizationControl& dc, frame* fr, const RegisterMap *reg_map) {
+  if (!dc.should_deopt()) return true;
+
   JavaThread* ct = dc.calling_thread();
   JavaThread* deoptee_thread = reg_map->thread();
   bool realloc_failures = false;
 
-  assert(dc.should_deopt(), "should not call");
   assert(!Thread::current()->is_VM_thread(), "the VM thread cannot reallocate stack objects to the Java heap");
   assert(fr->is_compiled_frame(), "only compiled frames can contain stack allocated objects");
   assert(reg_map->update_map(), "e.g. for values in callee saved registers");
