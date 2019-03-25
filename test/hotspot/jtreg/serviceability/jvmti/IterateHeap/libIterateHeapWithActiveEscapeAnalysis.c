@@ -121,6 +121,8 @@ Agent_Initialize(JavaVM *jvm, char *options, void *reserved) {
 static jobject method_IterateOverReachableObjects;
 static jobject method_IterateOverHeap;
 static jobject method_IterateOverInstancesOfClass;
+static jobject method_FollowReferences;
+static jobject method_IterateThroughHeap;
 
 JNIEXPORT jint JNICALL
 Java_IterateHeapWithActiveEscapeAnalysis_registerMethod(JNIEnv *env, jclass cls, jobject method, jstring name) {
@@ -138,6 +140,14 @@ Java_IterateHeapWithActiveEscapeAnalysis_registerMethod(JNIEnv *env, jclass cls,
     method_IterateOverInstancesOfClass = (*env)->NewGlobalRef(env, method);
     rc = OK;
   }
+  if (rc != OK && strcmp(name_chars, "IterateThroughHeap") == 0) {
+    method_IterateThroughHeap = (*env)->NewGlobalRef(env, method);
+    rc = OK;
+  }
+  if (rc != OK && strcmp(name_chars, "FollowReferences") == 0) {
+    method_FollowReferences = (*env)->NewGlobalRef(env, method);
+    rc = OK;
+  }
   (*env)->ReleaseStringUTFChars(env, name, name_chars);
   return rc;
 }
@@ -147,6 +157,8 @@ Java_IterateHeapWithActiveEscapeAnalysis_agentTearDown(JNIEnv *env, jclass cls) 
   (*env)->DeleteGlobalRef(env, method_IterateOverReachableObjects);
   (*env)->DeleteGlobalRef(env, method_IterateOverHeap);
   (*env)->DeleteGlobalRef(env, method_IterateOverInstancesOfClass);
+  (*env)->DeleteGlobalRef(env, method_FollowReferences);
+  (*env)->DeleteGlobalRef(env, method_IterateThroughHeap);
 }
 
 JNIEXPORT jint JNICALL
@@ -192,6 +204,37 @@ __jvmtiHeapObjectCallback(jlong class_tag, jlong size, jlong* tag_ptr, void* d) 
     return JVMTI_ITERATION_CONTINUE;
 }
 
+static jint JNICALL
+__jvmtiHeapReferenceCallback(jvmtiHeapReferenceKind reference_kind,
+                             const jvmtiHeapReferenceInfo* reference_info,
+                             jlong class_tag,
+                             jlong referrer_class_tag,
+                             jlong size,
+                             jlong* tag_ptr,
+                             jlong* referrer_tag_ptr,
+                             jint length,
+                             void* d) {
+    Tag_And_Counter* data = (Tag_And_Counter*) d;
+    if (class_tag == data->class_tag) {
+        data->instance_counter++;
+    }
+    return JVMTI_VISIT_OBJECTS;
+}
+
+static jint JNICALL
+__jvmtiHeapIterationCallback(jlong class_tag,
+                             jlong size,
+                             jlong* tag_ptr,
+                             jint length,
+                             void* d) {
+    Tag_And_Counter* data = (Tag_And_Counter*) d;
+    if (class_tag == data->class_tag) {
+        data->instance_counter++;
+    }
+    return JVMTI_VISIT_OBJECTS;
+}
+
+
 JNIEXPORT jlong JNICALL
 Java_IterateHeapWithActiveEscapeAnalysis_countInstancesOfClass(JNIEnv *env, jclass cls, jclass scalar_repl_cls, jlong clsTag, jobject method) {
     jvmtiError err;
@@ -235,6 +278,37 @@ Java_IterateHeapWithActiveEscapeAnalysis_countInstancesOfClass(JNIEnv *env, jcla
         if (err != JVMTI_ERROR_NONE) {
             ShowErrorMessage(jvmti, err,
                              "countInstancesOfClass: error in JVMTI IterateOverHeap");
+            return FAILED;
+        }
+    }
+    if ((*env)->IsSameObject(env, method, method_FollowReferences)) {
+        method_found = JNI_TRUE;
+        jvmtiHeapCallbacks callbacks = {0};
+        callbacks.heap_reference_callback = __jvmtiHeapReferenceCallback;
+        err = (*jvmti)->FollowReferences(jvmti,
+                                         0 /* filter nothing */,
+                                         NULL /* no class filter */,
+                                         NULL /* no initial object, follow roots */,
+                                         &callbacks,
+                                         &data);
+        if (err != JVMTI_ERROR_NONE) {
+            ShowErrorMessage(jvmti, err,
+                             "countInstancesOfClass: error in JVMTI FollowReferences");
+            return FAILED;
+        }
+    }
+    if ((*env)->IsSameObject(env, method, method_IterateThroughHeap)) {
+        method_found = JNI_TRUE;
+        jvmtiHeapCallbacks callbacks = {0};
+        callbacks.heap_iteration_callback = __jvmtiHeapIterationCallback;
+        err = (*jvmti)->IterateThroughHeap(jvmti,
+                                           0 /* filter nothing */,
+                                           NULL /* no class filter */,
+                                           &callbacks,
+                                           &data);
+        if (err != JVMTI_ERROR_NONE) {
+            ShowErrorMessage(jvmti, err,
+                             "countInstancesOfClass: error in JVMTI IterateThroughHeap");
             return FAILED;
         }
     }

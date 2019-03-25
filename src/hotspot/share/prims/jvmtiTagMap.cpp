@@ -1507,6 +1507,10 @@ void JvmtiTagMap::iterate_through_heap(jint heap_filter,
                                        const jvmtiHeapCallbacks* callbacks,
                                        const void* user_data)
 {
+  // Reallocate scalar replaced objects to the heap. Already tagged objects must have been
+  // reallocated already.
+  EADeoptimizationControl dc(JavaThread::current(), !(heap_filter & JVMTI_HEAP_FILTER_UNTAGGED));
+  Deoptimization::deoptimize_objects_all_threads(dc);
   MutexLocker ml(Heap_lock);
   IterateThroughHeapObjectClosure blk(this,
                                       klass,
@@ -3312,8 +3316,9 @@ void JvmtiTagMap::follow_references(jint heap_filter,
   oop obj = JNIHandles::resolve(object);
   JavaThread* jt = JavaThread::current();
   Handle initial_object(jt, obj);
-  // reallocate scalar replaced objects to the heap
-  EADeoptimizationControl dc(jt, !initial_object.is_null());
+  // Reallocate scalar replaced objects to the heap. Tagged objects can't be scalar replaced.
+  EADeoptimizationControl dc(jt,
+      !initial_object.is_null() || !(heap_filter & JVMTI_HEAP_FILTER_UNTAGGED));
   Deoptimization::deoptimize_objects_all_threads(dc);
   MutexLocker ml(Heap_lock);
   AdvancedHeapWalkContext context(heap_filter, klass, callbacks);

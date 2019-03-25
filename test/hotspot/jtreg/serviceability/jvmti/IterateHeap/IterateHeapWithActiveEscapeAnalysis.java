@@ -86,7 +86,9 @@ public class IterateHeapWithActiveEscapeAnalysis {
     public static enum InstanceCountMethod {
         IterateOverReachableObjects,
         IterateOverHeap,
-        IterateOverInstancesOfClass
+        IterateOverInstancesOfClass,
+        FollowReferences,
+        IterateThroughHeap
     }
 
     public static native int registerMethod(InstanceCountMethod m, String name);
