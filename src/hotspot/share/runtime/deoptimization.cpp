@@ -2493,6 +2493,20 @@ bool JVMTIEscapeBarrier::deoptimize_objects_all_threads() {
   return true; // success
 }
 
+bool JVMTIEscapeBarrier::_must_not_attach_threads = false;
+
+bool JVMTIEscapeBarrier::must_not_attach_threads() {
+  assert(Threads_lock->owned_by_self(), "Threads_lock required");
+  return _must_not_attach_threads;
+}
+
+void JVMTIEscapeBarrier::set_must_not_attach_threads(bool v) {
+  assert(Threads_lock->owned_by_self(), "Threads_lock required");
+  _must_not_attach_threads = v;
+  if (!_must_not_attach_threads) {
+    Threads_lock->notify_all(); // notify waiting threads
+  }
+}
 
 void JVMTIEscapeBarrier::sync_and_suspend_one() {
   assert(_calling_thread != NULL, "calling thread must not be NULL");
@@ -2533,6 +2547,7 @@ class VM_ThreadSuspendAllForObjDeopt : public VM_Operation {
          jt->set_ea_obj_deopt_flag();
        }
      }
+     JVMTIEscapeBarrier::set_must_not_attach_threads(true);
    }
 };
 
@@ -2581,6 +2596,8 @@ void JVMTIEscapeBarrier::resume_all() {
   for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
     jt->clear_ea_obj_deopt_flag();
   }
+  MutexLocker ml(Threads_lock);
+  set_must_not_attach_threads(false);
   JvmtiObjReallocRelock_lock->notify_all();
   JvmtiObjReallocRelock_lock->unlock();
 }

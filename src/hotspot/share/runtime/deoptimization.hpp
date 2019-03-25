@@ -469,6 +469,8 @@ JVMCI_ONLY(public:)
 // references helt by java threads. They trigger rollback of jit compiler optimizations based on
 // escape analysis (e.g. scalar replacement and lock elimination).
 class JVMTIEscapeBarrier : StackObj {
+  static bool _must_not_attach_threads;
+
   JavaThread* const _calling_thread;
   JavaThread* const _deoptee_thread;
   bool        const _should_deopt;
@@ -508,6 +510,10 @@ public:
   bool deoptimize_objects(intptr_t* fr_id)                                            NOT_COMPILER2_OR_JVMCI_RETURN_(true);
   bool deoptimize_objects(int depth)                                                  NOT_COMPILER2_OR_JVMCI_RETURN_(true);
   bool deoptimize_objects_all_threads()                                               NOT_COMPILER2_OR_JVMCI_RETURN_(true);
+
+  // Used to prevent that new threads pop up, until the triggering operation has completed.
+  static bool must_not_attach_threads()                                               NOT_COMPILER2_OR_JVMCI_RETURN_(false);
+  static void set_must_not_attach_threads(bool v)                                     NOT_COMPILER2_OR_JVMCI_RETURN_();
 
 #ifdef COMPILER2_OR_JVMCI
   ~JVMTIEscapeBarrier() {
