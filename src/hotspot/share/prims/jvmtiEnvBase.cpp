@@ -1348,8 +1348,8 @@ JvmtiEnvBase::check_top_frame(JavaThread* current_thread, JavaThread* java_threa
     }
     Deoptimization::deoptimize_frame(java_thread, jvf->fr().id());
     // eagerly reallocate scalar replaced objects
-    EADeoptimizationControl dc(current_thread, java_thread, true);
-    if (!Deoptimization::deoptimize_objects(dc, jvf->fr().id())) {
+    JVMTIEscapeBarrier eb(current_thread, java_thread, true);
+    if (!eb.deoptimize_objects(jvf->fr().id())) {
       // reallocation of scalar replaced objects failed -> return with error
       return JVMTI_ERROR_OUT_OF_MEMORY;
     }

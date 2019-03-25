@@ -1487,9 +1487,9 @@ void JvmtiTagMap::iterate_over_heap(jvmtiHeapObjectFilter object_filter,
 {
   // Reallocate scalar replaced objects to the heap. Already tagged objects must have been
   // reallocated already.
-  EADeoptimizationControl dc(JavaThread::current(),
+  JVMTIEscapeBarrier eb(JavaThread::current(),
       object_filter == JVMTI_HEAP_OBJECT_UNTAGGED || object_filter == JVMTI_HEAP_OBJECT_EITHER);
-  Deoptimization::deoptimize_objects_all_threads(dc);
+  eb.deoptimize_objects_all_threads();
   MutexLocker ml(Heap_lock);
   IterateOverHeapObjectClosure blk(this,
                                    klass,
@@ -1509,8 +1509,8 @@ void JvmtiTagMap::iterate_through_heap(jint heap_filter,
 {
   // Reallocate scalar replaced objects to the heap. Already tagged objects must have been
   // reallocated already.
-  EADeoptimizationControl dc(JavaThread::current(), !(heap_filter & JVMTI_HEAP_FILTER_UNTAGGED));
-  Deoptimization::deoptimize_objects_all_threads(dc);
+  JVMTIEscapeBarrier eb(JavaThread::current(), !(heap_filter & JVMTI_HEAP_FILTER_UNTAGGED));
+  eb.deoptimize_objects_all_threads();
   MutexLocker ml(Heap_lock);
   IterateThroughHeapObjectClosure blk(this,
                                       klass,
@@ -3285,8 +3285,8 @@ void JvmtiTagMap::iterate_over_reachable_objects(jvmtiHeapRootCallback heap_root
                                                  const void* user_data) {
   JavaThread* jt = JavaThread::current();
   // reallocate scalar replaced objects to the heap
-  EADeoptimizationControl dc(jt, true);
-  Deoptimization::deoptimize_objects_all_threads(dc);
+  JVMTIEscapeBarrier eb(jt, true);
+  eb.deoptimize_objects_all_threads();
   MutexLocker ml(Heap_lock);
   BasicHeapWalkContext context(heap_root_callback, stack_ref_callback, object_ref_callback);
   VM_HeapWalkOperation op(this, Handle(), context, user_data);
@@ -3317,9 +3317,9 @@ void JvmtiTagMap::follow_references(jint heap_filter,
   JavaThread* jt = JavaThread::current();
   Handle initial_object(jt, obj);
   // Reallocate scalar replaced objects to the heap. Tagged objects can't be scalar replaced.
-  EADeoptimizationControl dc(jt,
+  JVMTIEscapeBarrier eb(jt,
       !initial_object.is_null() || !(heap_filter & JVMTI_HEAP_FILTER_UNTAGGED));
-  Deoptimization::deoptimize_objects_all_threads(dc);
+  eb.deoptimize_objects_all_threads();
   MutexLocker ml(Heap_lock);
   AdvancedHeapWalkContext context(heap_filter, klass, callbacks);
   VM_HeapWalkOperation op(this, initial_object, context, user_data);

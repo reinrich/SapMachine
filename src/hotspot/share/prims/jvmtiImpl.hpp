@@ -361,7 +361,7 @@ class VM_GetOrSetLocal : public VM_Operation {
   javaVFrame* _jvf;
   bool        _set;
 
-  EADeoptimizationControl _dc;
+  JVMTIEscapeBarrier _eb;
 
   // It is possible to get the receiver out of a non-static native wrapper
   // frame.  Use VM_GetReceiver to do this.
