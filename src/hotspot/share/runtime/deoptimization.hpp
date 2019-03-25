@@ -41,6 +41,7 @@ template<class E> class GrowableArray;
 
 class Deoptimization : AllStatic {
   friend class VMStructs;
+  friend class JVMTIEscapeBarrier;
 
  public:
   // What condition caused the deoptimization?
@@ -158,12 +159,12 @@ class Deoptimization : AllStatic {
   static void revoke_biases_of_monitors(JavaThread* thread, frame fr, RegisterMap* map);
 
 #if COMPILER2_OR_JVMCI
-JVMCI_ONLY(public:)
   // Reallocate scalar replaced objects and relock objects either (a) to replace the owning compiled
   // frame with corresponding interpreter frames or (b) to make them accessible for JVMTI
   // agents. deoptimizing_frame == true indicates case (a). Returns false if reallocation fails.
   static bool deoptimize_objects(JavaThread* thread, GrowableArray<compiledVFrame*>* chunk, bool& realloc_failures, int exec_mode);
 
+JVMCI_ONLY(public:)
   // Support for restoring non-escaping objects
   static bool realloc_objects(JavaThread* thread, frame* fr, GrowableArray<ScopeValue*>* objects, int exec_mode, TRAPS);
   static void reassign_type_array_elements(frame* fr, RegisterMap* reg_map, ObjectValue* sv, typeArrayOop obj, BasicType type);
