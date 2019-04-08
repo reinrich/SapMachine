@@ -2529,8 +2529,10 @@ void JVMTIEscapeBarrier::sync_and_suspend_one() {
 
   uint32_t debug_bits = 0;
   if (!_deoptee_thread->is_thread_fully_suspended(false, &debug_bits)) {
-    VM_ThreadSuspend vm_suspend;
-    VMThread::execute(&vm_suspend);
+    class NopClosure : public ThreadClosure {
+      void do_thread(Thread* th) { }
+    } nop;
+    Handshake::execute(&nop, _deoptee_thread);
   }
   assert(!_deoptee_thread->has_last_Java_frame() || _deoptee_thread->frame_anchor()->walkable(),
          "stack should be walkable now");
