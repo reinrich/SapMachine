@@ -2294,6 +2294,7 @@ void JavaThread::handle_special_runtime_exit_condition(bool check_asyncs) {
   }
 
   if (is_ea_obj_deopt_suspend()) {
+    frame_anchor()->make_walkable(this);
     wait_for_object_deoptimization();
   }
 
@@ -2491,15 +2492,29 @@ void JavaThread::java_suspend_self_with_safepoint_check() {
 }
 
 void JavaThread::wait_for_object_deoptimization() {
-  frame_anchor()->make_walkable(this);
+  assert(!has_last_Java_frame() || frame_anchor()->walkable(), "should have walkable stack");
+  assert(this == Thread::current(), "invariant");
   JavaThreadState state = thread_state();
-  set_thread_state(_thread_in_vm);
-  MutexLocker ml(JvmtiObjReallocRelock_lock);
-  while (is_ea_obj_deopt_suspend()) {
-    JvmtiObjReallocRelock_lock->wait(!Monitor::_no_safepoint_check_flag, 0, Monitor::_as_suspend_equivalent_flag);
-  }
+  set_thread_state(_thread_blocked);
+  do {
+    set_suspend_equivalent();
+    {
+      MutexLockerEx ml(JvmtiObjReallocRelock_lock, Monitor::_no_safepoint_check_flag);
+      while (is_ea_obj_deopt_suspend()) {
+        JvmtiObjReallocRelock_lock->wait(Monitor::_no_safepoint_check_flag);
+      }
+    }
+    if (!handle_special_suspend_equivalent_condition()) break;
+    java_suspend_self();
+  } while(true);
   set_thread_state(state);
+  // Since we are not using a regular thread-state transition helper here,
+  // we must manually emit the instruction barrier after leaving a safe state.
+  OrderAccess::cross_modify_fence();
   InterfaceSupport::serialize_thread_state_with_handler(this);
+  if (state != _thread_in_native) {
+    SafepointMechanism::block_if_requested(this);
+  }
 }
 
 #ifdef ASSERT
