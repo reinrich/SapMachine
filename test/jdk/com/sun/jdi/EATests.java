@@ -261,6 +261,9 @@ class EATestsTarget {
         new EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsTarget().run();
         new EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailureTarget().run();
 
+        // Instances of ReferenceType
+        new EAGetInstancesOfReferenceTypeTarget()      .run();
+
     }
 }
 
@@ -363,6 +366,9 @@ public class EATests extends TestScaffold {
         new EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjects().setScaffold(this).run();
         new EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailure().setScaffold(this).run();
 
+        // Instances of ReferenceType
+        new EAGetInstancesOfReferenceType()    .setScaffold(this).run();
+
         // resume the target listening for events
         listenUntilVMDisconnect();
     }
@@ -416,6 +422,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
 
             resumeToWarmupDone();
             runTestCase();
+            Asserts.assertTrue(env.targetMainThread.isSuspended(), "must be suspended after the testcase");
             resumeToTestCaseDone();
             checkPostConditions();
         } catch (Exception e) {
@@ -2504,6 +2511,79 @@ class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailureTa
     }
 }
 
+/////////////////////////////////////////////////////////////////////////////
+//
+// Get Instances of ReferenceType
+//
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Check if instances of a type are found even if they are scalar replaced.  To stress the
+ * implementation a little more, the instances should be retrieved while the target is running.
+ */
+class EAGetInstancesOfReferenceType extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        printStack(env.targetMainThread);
+        ReferenceType cls = ((ClassObjectReference)getField(testCase, "cls")).reflectedType();
+        msg("reflected type is " + cls);
+        msg("resume");
+        env.targetMainThread.resume();
+        waitUntilTargetHasEnteredEndlessLoop();
+        // do this while thread is running!
+        msg("Retrieve instances of " + cls.name());
+        List<ObjectReference> instances = cls.instances(10);
+        Asserts.assertEQ(instances.size(), 3, "unexpected number of instances of " + cls.name());
+        // invariant: main thread is suspended at the end of the test case
+        msg("suspend");
+        env.targetMainThread.suspend();
+        terminateEndlessLoop();
+    }
+}
+
+class EAGetInstancesOfReferenceTypeTarget extends EATestCaseBaseTarget {
+
+    public long checkSum;
+
+    public static Class<LocalPointXY> cls = LocalPointXY.class;
+
+    public static class LocalPointXY {
+        public int x, y;
+
+        public LocalPointXY(int x, int y) {
+            this.x = x; this.y = y;
+        }
+    }
+
+    @Override
+    public void dontinline_testMethod() {
+        LocalPointXY p1 = new LocalPointXY(4, 2);
+        LocalPointXY p2 = new LocalPointXY(5, 3);
+        LocalPointXY p3 = new LocalPointXY(6, 4);
+        dontline_endlessLoop();
+        iResult = p1.x+p1.y + p2.x+p2.y + p3.x+p3.y;
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 6+8+10;
+    }
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+        loopCount = 3;
+    }
+
+    public void warmupDone() {
+        super.warmupDone();
+        msg("enter 'endless' loop by setting loopCount = 1L << 60");
+        loopCount = 1L << 60; // endless loop
+    }
+}
+
+
 // End of test case collection
 /////////////////////////////////////////////////////////////////////////////
 
@@ -2511,8 +2591,7 @@ class EAForceEarlyReturnOfInlinedMethodWithScalarReplacedObjectsReallocFailureTa
 // Helper classes
 class PointXY {
 
-    public int x;
-    public int y;
+    public int x, y;
 
     public PointXY(int x, int y) {
         this.x = x;
