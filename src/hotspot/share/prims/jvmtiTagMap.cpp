@@ -3318,7 +3318,7 @@ void JvmtiTagMap::follow_references(jint heap_filter,
   Handle initial_object(jt, obj);
   // Reallocate scalar replaced objects to the heap. Tagged objects can't be scalar replaced.
   JVMTIEscapeBarrier eb(jt,
-      !initial_object.is_null() || !(heap_filter & JVMTI_HEAP_FILTER_UNTAGGED));
+      initial_object.is_null() && !(heap_filter & JVMTI_HEAP_FILTER_UNTAGGED));
   eb.deoptimize_objects_all_threads();
   MutexLocker ml(Heap_lock);
   AdvancedHeapWalkContext context(heap_filter, klass, callbacks);

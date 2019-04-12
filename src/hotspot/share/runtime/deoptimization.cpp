@@ -2481,6 +2481,7 @@ bool JVMTIEscapeBarrier::deoptimize_objects(intptr_t* fr_id) {
 
 bool JVMTIEscapeBarrier::deoptimize_objects_all_threads() {
   if (!should_deopt()) return true;
+  ResourceMark rm(calling_thread());
   for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
     if (!jt->has_last_Java_frame()) continue;
     RegisterMap reg_map(jt);
