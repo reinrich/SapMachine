@@ -2400,6 +2400,26 @@ void Deoptimization::print_statistics() {
   }
 }
 
+#ifdef ASSERT
+// Revert optimizations based on escape analysis for all compiled frames of all Java threads as if
+// objects local to a frame or a thread were escaping. Do it every DeoptimizeObjectsALotInterval
+// milliseconds.
+void Deoptimization::deoptimize_objects_alot_loop() {
+  JavaThread* ct = JavaThread::current();
+  HandleMark hm(ct);
+  while (true) {
+    { // Begin new scope for escape barrier
+      HandleMarkCleaner hmc(ct);
+      ResourceMark rm(ct);
+      JVMTIEscapeBarrier eb(ct, true);
+      eb.deoptimize_objects_all_threads();
+    }
+    // Now sleep after The escape barriers destructor resumed the java threads.
+    os::sleep(ct, DeoptimizeObjectsALotInterval, true);
+  }
+}
+#endif // !ASSERT
+
 // Returns true iff objects were reallocated and relocked because of access through JVMTI
 bool JVMTIEscapeBarrier::objs_are_deoptimized(JavaThread* thread, intptr_t* fr_id) {
   // first/oldest update holds the flag

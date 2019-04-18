@@ -463,6 +463,11 @@ JVMCI_ONLY(public:)
 
  public:
   static void update_method_data_from_interpreter(MethodData* trap_mdo, int trap_bci, int reason);
+
+#if defined(ASSERT) && defined(COMPILER2_OR_JVMCI)
+  // Revert optimizations based on escape analysis for all compiled frames of all Java threads.
+  static void deoptimize_objects_alot_loop();
+#endif // defined(ASSERT) && defined(COMPILER2_OR_JVMCI)
 };
 
 // JVMTIEscapeBarriers should be put on execution paths, where JVMTI agents can access object

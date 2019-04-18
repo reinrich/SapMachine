@@ -488,6 +488,14 @@ define_pd_global(uint64_t,MaxRAM,                    1ULL*G);
   notproduct(bool, WalkStackALot, false,                                    \
           "Trace stack (no print) at every exit from the runtime system")   \
                                                                             \
+  develop(int, DeoptimizeObjectsALot, 0,                                    \
+          "Revert optimizations based on escape analysis. "                 \
+          "0: switched off. "                                               \
+          "1: At every exit from the runtime system "                       \
+          "2: Starts a dedicated thread that periodically triggers the "    \
+          "deoptimization" )                                                \
+           range(0,2)                                                       \
+                                                                            \
   product(bool, Debugging, false,                                           \
           "Set when executing debug methods in debug.cpp "                  \
           "(to prevent triggering assertions)")                             \
@@ -1650,6 +1658,9 @@ define_pd_global(uint64_t,MaxRAM,                    1ULL*G);
                                                                             \
   notproduct(intx, ZombieALotInterval,     5,                               \
           "Number of exits until ZombieALot kicks in")                      \
+                                                                            \
+  develop(intx, DeoptimizeObjectsALotInterval,     5,                       \
+          "Number of exits until DeoptimizeObjectsALot kicks in")           \
                                                                             \
   diagnostic(uintx, MallocMaxTestWords,     0,                              \
           "If non-zero, maximum number of words that malloc/realloc can "   \

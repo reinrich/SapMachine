@@ -2187,6 +2187,13 @@ class CodeCacheSweeperThread : public JavaThread {
   void nmethods_do(CodeBlobClosure* cf);
 };
 
+#if defined(ASSERT) && defined(COMPILER2_OR_JVMCI)
+class DeoptimizeObjectsALotThread : public JavaThread {
+ public:
+  DeoptimizeObjectsALotThread();
+};
+#endif // defined(ASSERT) && defined(COMPILER2_OR_JVMCI)
+
 // A thread used for Compilation.
 class CompilerThread : public JavaThread {
   friend class VMStructs;

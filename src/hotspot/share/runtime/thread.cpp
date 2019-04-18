@@ -3478,6 +3478,15 @@ void CodeCacheSweeperThread::nmethods_do(CodeBlobClosure* cf) {
   }
 }
 
+#if defined(ASSERT) && defined(COMPILER2_OR_JVMCI)
+static void deopt_objs_alot_thread_entry(JavaThread* thread, TRAPS) {
+  Deoptimization::deoptimize_objects_alot_loop();
+}
+
+DeoptimizeObjectsALotThread::DeoptimizeObjectsALotThread()
+: JavaThread(&deopt_objs_alot_thread_entry) {
+}
+#endif // defined(ASSERT) && defined(COMPILER2_OR_JVMCI)
 
 // ======= Threads ========
 

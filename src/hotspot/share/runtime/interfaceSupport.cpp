@@ -30,6 +30,7 @@
 #include "memory/universe.hpp"
 #include "runtime/atomic.hpp"
 #include "runtime/frame.inline.hpp"
+#include "runtime/deoptimization.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/init.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
@@ -66,6 +67,9 @@ VMEntryWrapper::~VMEntryWrapper() {
   }
   if (ZombieALot) {
     InterfaceSupport::zombieAll();
+  }
+  if (DeoptimizeObjectsALot == 1) {
+    InterfaceSupport::deoptimizeAllObjects();
   }
   // do verification AFTER potential deoptimization
   if (VerifyStack) {
@@ -191,6 +195,7 @@ void InterfaceSupport::walk_stack() {
 // invocation counter for InterfaceSupport::deoptimizeAll/zombieAll functions
 int deoptimizeAllCounter = 0;
 int zombieAllCounter = 0;
+int deoptimizeAllObjectsCounter = 0;
 
 void InterfaceSupport::zombieAll() {
   // This method is called by all threads when a thread make
@@ -223,6 +228,23 @@ void InterfaceSupport::deoptimizeAll() {
     }
   }
   deoptimizeAllCounter++;
+}
+
+void InterfaceSupport::deoptimizeAllObjects() {
+  // This method is called by all threads when a thread makes
+  // transition to VM state (for example, runtime calls).
+  // Divide number of calls by number of threads to avoid
+  // dependence of DeoptimizeObjectsALot events frequency on number of threads.
+  int value = deoptimizeAllObjectsCounter / Threads::number_of_threads();
+  if (is_init_completed() && value > DeoptimizeObjectsALotInterval) {
+    // Revert optimizations based on escape analysis for all compiled frames of all Java threads as
+    // if objects local to a frame or a thread were escaping.
+    deoptimizeAllObjectsCounter = 0;
+    JavaThread* ct = JavaThread::current();
+    JVMTIEscapeBarrier eb(ct, true);
+    eb.deoptimize_objects_all_threads();
+  }
+  deoptimizeAllObjectsCounter++;
 }
 
 
