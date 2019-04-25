@@ -4467,6 +4467,12 @@ void Threads::add(JavaThread* p, bool force_daemon) {
   // The threads lock must be owned at this point
   assert(Threads_lock->owned_by_self(), "must have threads lock");
 
+  while (JVMTIEscapeBarrier::deoptimizing_objects_for_all_threads()) {
+    // Must not add new threads that push frames with ea based optimizations
+    bool no_sft_check = Thread::current() == p;
+    Threads_lock->wait(no_sft_check, 0, !no_sft_check);
+  }
+
   BarrierSet::barrier_set()->on_thread_attach(p);
 
   p->set_next(_thread_list);

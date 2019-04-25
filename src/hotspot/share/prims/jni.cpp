@@ -4139,9 +4139,6 @@ static jint attach_current_thread(JavaVM *vm, void **penv, void *_args, bool dae
   // Crucial that we do not have a safepoint check for this thread, since it has
   // not been added to the Thread list yet.
   { Threads_lock->lock_without_safepoint_check();
-    while (JVMTIEscapeBarrier::must_not_attach_threads()) {
-      Threads_lock->wait(Mutex::_no_safepoint_check_flag, 0, !Mutex::_as_suspend_equivalent_flag);
-    }
     // This must be inside this lock in order to get FullGCALot to work properly, i.e., to
     // avoid this thread trying to do a GC before it is added to the thread-list
     thread->set_active_handles(JNIHandleBlock::allocate_block());
