@@ -200,29 +200,6 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
       assert (chunk->at(0)->scope() != NULL,"expect only compiled java frames");
       GrowableArray<ScopeValue*>* objects = chunk->at(0)->scope()->objects();
 
-      // The flag return_oop() indicates call sites which return oop
-      // in compiled code. Such sites include java method calls,
-      // runtime calls (for example, used to allocate new objects/arrays
-      // on slow code path) and any other calls generated in compiled code.
-      // It is not guaranteed that we can get such information here only
-      // by analyzing bytecode in deoptimized frames. This is why this flag
-      // is set during method compilation (see Compile::Process_OopMap_Node()).
-      // If the previous frame was popped, if we are dispatching an exception
-      // or if we are not deoptimizing the frame, we don't have an oop result.
-      bool save_oop_result = chunk->at(0)->scope()->return_oop() && !thread->popframe_forcing_deopt_reexecution() && (exec_mode == Unpack_deopt);
-      Handle return_value;
-      if (save_oop_result) {
-        // Reallocation may trigger GC. If deoptimization happened on return from
-        // call which returns oop we need to save it since it is not in oopmap.
-        oop result = deoptee.saved_oop_result(&map);
-        assert(oopDesc::is_oop_or_null(result), "must be oop");
-        return_value = Handle(thread, result);
-        assert(Universe::heap()->is_in_or_null(result), "must be heap pointer");
-        if (TraceDeoptimization) {
-          ttyLocker ttyl;
-          tty->print_cr("SAVED OOP RESULT " INTPTR_FORMAT " in thread " INTPTR_FORMAT, p2i(result), p2i(thread));
-        }
-      }
       if (objects != NULL) {
         if (exec_mode == Unpack_none) {
           assert(thread->thread_state() == _thread_in_vm, "assumption");
@@ -230,9 +207,36 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
           // Clear pending OOM if reallocation fails and return false, i.e. no objects deoptimized.
           realloc_failures = realloc_objects(thread, &deoptee, objects, exec_mode, CHECK_AND_CLEAR_false);
         } else {
+          // The flag return_oop() indicates call sites which return oop
+          // in compiled code. Such sites include java method calls,
+          // runtime calls (for example, used to allocate new objects/arrays
+          // on slow code path) and any other calls generated in compiled code.
+          // It is not guaranteed that we can get such information here only
+          // by analyzing bytecode in deoptimized frames. This is why this flag
+          // is set during method compilation (see Compile::Process_OopMap_Node()).
+          // If the previous frame was popped, if we are dispatching an exception
+          // or if we are not deoptimizing the frame, we don't have an oop result.
+          bool save_oop_result = chunk->at(0)->scope()->return_oop() && !thread->popframe_forcing_deopt_reexecution() && (exec_mode == Unpack_deopt);
+          Handle return_value;
+          if (save_oop_result) {
+            // Reallocation may trigger GC. If deoptimization happened on return from
+            // call which returns oop we need to save it since it is not in oopmap.
+            oop result = deoptee.saved_oop_result(&map);
+            assert(oopDesc::is_oop_or_null(result), "must be oop");
+            return_value = Handle(thread, result);
+            assert(Universe::heap()->is_in_or_null(result), "must be heap pointer");
+            if (TraceDeoptimization) {
+              ttyLocker ttyl;
+              tty->print_cr("SAVED OOP RESULT " INTPTR_FORMAT " in thread " INTPTR_FORMAT, p2i(result), p2i(thread));
+            }
+          }
           JRT_BLOCK
             realloc_failures = realloc_objects(thread, &deoptee, objects, exec_mode, THREAD);
           JRT_BLOCK_END
+          if (save_oop_result) {
+            // Restore result.
+            deoptee.set_saved_oop_result(&map, return_value());
+          }
           if (JVMTIEscapeBarrier::objs_are_deoptimized(deoptee_thread, deoptee.id())) {
             // A concurrent JVMTI agent thread stop the current thread in the JRT_BLOCK above
             // and deoptimized its objects
@@ -251,10 +255,6 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
           print_objects(objects, realloc_failures);
         }
 #endif
-      }
-      if (save_oop_result) {
-        // Restore result.
-        deoptee.set_saved_oop_result(&map, return_value());
       }
 #if !INCLUDE_JVMCI
     }
@@ -2504,6 +2504,9 @@ bool JVMTIEscapeBarrier::deoptimize_objects_all_threads() {
   ResourceMark rm(calling_thread());
   for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
     if (!jt->has_last_Java_frame()) continue;
+    assert(jt->frame_anchor()->walkable(),
+           "The stack of JavaThread " PTR_FORMAT " is not walkable. Thread state is %d",
+           p2i(jt), jt->thread_state());
     RegisterMap reg_map(jt);
     for (frame fr = jt->last_frame(); !fr.is_first_frame(); fr = fr.sender(&reg_map)) {
       if (fr.can_be_deoptimized() && !deoptimize_objects(jt, &fr, &reg_map)) {
@@ -2596,7 +2599,9 @@ void JVMTIEscapeBarrier::sync_and_suspend_all() {
   VMThread::execute(&vm_suspend_all);
 #ifdef ASSERT
   for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
-    assert(!jt->has_last_Java_frame() || jt->frame_anchor()->walkable(), "stacks should be walkable now");
+    assert(!jt->has_last_Java_frame() || jt->frame_anchor()->walkable(),
+           "The stack of JavaThread " PTR_FORMAT " is not walkable. Thread state is %d",
+           p2i(jt), jt->thread_state());
   }
 #endif // ASSERT
 }

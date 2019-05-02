@@ -1343,6 +1343,11 @@ JvmtiEnv::RunAgentThread(jthread thread, jvmtiStartFunction proc, const void* ar
   {
     MutexLocker mu(Threads_lock); // grab Threads_lock
 
+    while (JVMTIEscapeBarrier::deoptimizing_objects_for_all_threads()) {
+      // Must not add new threads that push frames with ea based optimizations
+      Threads_lock->wait(!Monitor::_no_safepoint_check_flag, 0, Monitor::_as_suspend_equivalent_flag);
+    }
+
     JvmtiAgentThread *new_thread = new JvmtiAgentThread(this, proc, arg);
 
     // At this point it may be possible that no osthread was created for the

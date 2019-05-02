@@ -2495,19 +2495,21 @@ void JavaThread::wait_for_object_deoptimization() {
   assert(!has_last_Java_frame() || frame_anchor()->walkable(), "should have walkable stack");
   assert(this == Thread::current(), "invariant");
   JavaThreadState state = thread_state();
-  set_thread_state(_thread_blocked);
+
   do {
+    set_thread_state(_thread_blocked);
     set_suspend_equivalent();
-    {
-      MutexLockerEx ml(JvmtiObjReallocRelock_lock, Monitor::_no_safepoint_check_flag);
-      while (is_ea_obj_deopt_suspend()) {
-        JvmtiObjReallocRelock_lock->wait(Monitor::_no_safepoint_check_flag);
-      }
+    MutexLockerEx ml(JvmtiObjReallocRelock_lock, Monitor::_no_safepoint_check_flag);
+    if (is_ea_obj_deopt_suspend()) {
+      JvmtiObjReallocRelock_lock->wait(Monitor::_no_safepoint_check_flag);
     }
-    if (!handle_special_suspend_equivalent_condition()) break;
-    java_suspend_self();
-  } while(true);
-  set_thread_state(state);
+    if (handle_special_suspend_equivalent_condition()) {
+      MutexUnlockerEx mu(JvmtiObjReallocRelock_lock, Monitor::_no_safepoint_check_flag);
+      java_suspend_self();
+    }
+    set_thread_state(state);
+  } while (is_ea_obj_deopt_suspend());
+
   // Since we are not using a regular thread-state transition helper here,
   // we must manually emit the instruction barrier after leaving a safe state.
   OrderAccess::cross_modify_fence();
@@ -4466,12 +4468,6 @@ jboolean Threads::is_supported_jni_version(jint version) {
 void Threads::add(JavaThread* p, bool force_daemon) {
   // The threads lock must be owned at this point
   assert(Threads_lock->owned_by_self(), "must have threads lock");
-
-  while (JVMTIEscapeBarrier::deoptimizing_objects_for_all_threads()) {
-    // Must not add new threads that push frames with ea based optimizations
-    bool no_sft_check = Thread::current() == p;
-    Threads_lock->wait(no_sft_check, 0, !no_sft_check);
-  }
 
   BarrierSet::barrier_set()->on_thread_attach(p);
 
