@@ -475,6 +475,7 @@ JVMCI_ONLY(public:)
 // escape analysis (e.g. scalar replacement and lock elimination).
 class JVMTIEscapeBarrier : StackObj {
   static bool _deoptimizing_objects_for_all_threads;
+  static bool _self_deoptimization_in_progress;
 
   JavaThread* const _calling_thread;
   JavaThread* const _deoptee_thread;

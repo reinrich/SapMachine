@@ -317,7 +317,7 @@ void mutex_init() {
   def(MultiArray_lock              , PaddedMutex  , nonleaf+2,   false, Monitor::_safepoint_check_always);
 
   def(JvmtiThreadState_lock        , PaddedMutex  , nonleaf+2,   false, Monitor::_safepoint_check_always);     // Used by JvmtiThreadState/JvmtiEventController
-  def(JvmtiObjReallocRelock_lock   , PaddedMonitor, nonleaf+10,  false, Monitor::_safepoint_check_sometimes);  // Used to synchronize object reallocation/relocking triggered by JVMTI
+  def(JvmtiObjReallocRelock_lock   , PaddedMonitor, leaf,        false, Monitor::_safepoint_check_sometimes);  // Used to synchronize object reallocation/relocking triggered by JVMTI
   def(Management_lock              , PaddedMutex  , nonleaf+2,   false, Monitor::_safepoint_check_always);     // used for JVM management
 
   def(Compile_lock                 , PaddedMutex  , nonleaf+3,   true,  Monitor::_safepoint_check_always);

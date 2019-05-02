@@ -2518,6 +2518,7 @@ bool JVMTIEscapeBarrier::deoptimize_objects_all_threads() {
 }
 
 bool JVMTIEscapeBarrier::_deoptimizing_objects_for_all_threads = false;
+bool JVMTIEscapeBarrier::_self_deoptimization_in_progress      = false;
 
 bool JVMTIEscapeBarrier::deoptimizing_objects_for_all_threads() {
   assert(Threads_lock->owned_by_self(), "Threads_lock required");
@@ -2537,20 +2538,30 @@ void JVMTIEscapeBarrier::sync_and_suspend_one() {
   assert(_deoptee_thread != NULL, "deoptee thread must not be NULL");
   assert(should_deopt(), "should not call");
 
-  JvmtiObjReallocRelock_lock->lock(_calling_thread);
-  while (_deoptee_thread->is_deopt_suspend()) {
-    JvmtiObjReallocRelock_lock->wait();
+  // Sync with other threads that might be doing deoptimizations
+  {
+    MutexLocker ml(JvmtiObjReallocRelock_lock);
+    while (_self_deoptimization_in_progress) {
+      JvmtiObjReallocRelock_lock->wait();
+    }
+
+    if (self_deopt()) {
+      _self_deoptimization_in_progress = true;
+    }
+
+    while (_deoptee_thread->is_deopt_suspend()) {
+      JvmtiObjReallocRelock_lock->wait();
+    }
+
+    if (self_deopt()) {
+      return;
+    }
+
+    // set suspend flag for target thread
+    _deoptee_thread->set_ea_obj_deopt_flag();
   }
 
-  if (self_deopt()) {
-    // No need to suspend, but keep JvmtiObjReallocRelock_lock locked!
-    return;
-  }
-
-  // set suspend flag for target thread
-  _deoptee_thread->set_ea_obj_deopt_flag();
-  JvmtiObjReallocRelock_lock->unlock();
-
+  // suspend target thread
   uint32_t debug_bits = 0;
   if (!_deoptee_thread->is_thread_fully_suspended(false, &debug_bits)) {
     class NopClosure : public ThreadClosure {
@@ -2582,18 +2593,26 @@ void JVMTIEscapeBarrier::sync_and_suspend_all() {
   assert(_calling_thread != NULL, "calling thread must not be NULL");
   assert(all_threads(), "sanity");
 
-  // we keept JvmtiObjReallocRelock_lock, because this is also a self deoptimization
-  JvmtiObjReallocRelock_lock->lock(_calling_thread);
-  bool deopt_in_progress = false;
-  do {
-    for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
-      if (jt->is_deopt_suspend()) {
-        deopt_in_progress = true;
-        JvmtiObjReallocRelock_lock->wait();
-        break; // check all threads again
-      }
+  // Sync with other threads that might be doing deoptimizations
+  {
+    MutexLocker ml(JvmtiObjReallocRelock_lock);
+    while (_self_deoptimization_in_progress) {
+      JvmtiObjReallocRelock_lock->wait();
     }
-  } while(deopt_in_progress);
+
+    _self_deoptimization_in_progress = true;
+
+    bool deopt_in_progress = false;
+    do {
+      for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
+        if (jt->is_deopt_suspend()) {
+          deopt_in_progress = true;
+          JvmtiObjReallocRelock_lock->wait();
+          break; // check all threads again
+        }
+      }
+    } while(deopt_in_progress);
+  }
 
   VM_ThreadSuspendAllForObjDeopt vm_suspend_all;
   VMThread::execute(&vm_suspend_all);
@@ -2608,27 +2627,32 @@ void JVMTIEscapeBarrier::sync_and_suspend_all() {
 
 void JVMTIEscapeBarrier::resume_one() {
   assert(should_deopt(), "should not call");
-  if (self_deopt()) {
-    JvmtiObjReallocRelock_lock->unlock();
-    return;
-  }
-  assert(_deoptee_thread->is_ea_obj_deopt_suspend(), "not suspended");
+  assert(!all_threads(), "use resume_all()");
   MutexLocker ml(JvmtiObjReallocRelock_lock);
-  _deoptee_thread->clear_ea_obj_deopt_flag();
+  if (self_deopt()) {
+    assert(_self_deoptimization_in_progress, "incorrect synchronization");
+    _self_deoptimization_in_progress = false;
+  } else {
+    _deoptee_thread->clear_ea_obj_deopt_flag();
+  }
   JvmtiObjReallocRelock_lock->notify_all();
 }
 
 void JVMTIEscapeBarrier::resume_all() {
   assert(should_deopt(), "should not call");
-  assert(all_threads(), "sanity");
+  assert(all_threads(), "use resume_one()");
+  {
+    MutexLocker l1(Threads_lock);
+    set_deoptimizing_objects_for_all_threads(false);
+    Threads_lock->notify_all();
+  }
+  MutexLocker l2(JvmtiObjReallocRelock_lock);
+  assert(_self_deoptimization_in_progress, "incorrect synchronization");
+  _self_deoptimization_in_progress = false;
   for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
     jt->clear_ea_obj_deopt_flag();
   }
-  MutexLocker ml(Threads_lock);
-  set_deoptimizing_objects_for_all_threads(false);
-  Threads_lock->notify_all();
   JvmtiObjReallocRelock_lock->notify_all();
-  JvmtiObjReallocRelock_lock->unlock();
 }
 
 // Reallocate stack allocated objects on the heap. Relock objects if locking has
