@@ -138,6 +138,11 @@ class ThreadInVMForHandshake : public ThreadStateTransition {
     SafepointMechanism::block_if_requested(_thread);
 
     _thread->set_thread_state(_original_state);
+
+    if ((_original_state == _thread_in_Java || _original_state == _thread_in_native) &&
+        _thread->has_special_runtime_exit_condition()) {
+      _thread->handle_special_runtime_exit_condition(!_thread->is_at_poll_safepoint());
+    }
   }
 
  public:
