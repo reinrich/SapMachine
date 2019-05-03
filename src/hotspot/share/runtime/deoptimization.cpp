@@ -2407,14 +2407,14 @@ void Deoptimization::print_statistics() {
 void Deoptimization::deoptimize_objects_alot_loop() {
   JavaThread* ct = JavaThread::current();
   HandleMark hm(ct);
-  while (true) {
+  while (!ct->is_terminated()) {
     { // Begin new scope for escape barrier
       HandleMarkCleaner hmc(ct);
       ResourceMark rm(ct);
       JVMTIEscapeBarrier eb(ct, true);
       eb.deoptimize_objects_all_threads();
     }
-    // Now sleep after The escape barriers destructor resumed the java threads.
+    // Now sleep after the escape barriers destructor resumed the java threads.
     os::sleep(ct, DeoptimizeObjectsALotInterval, true);
   }
 }
@@ -2579,6 +2579,7 @@ class VM_ThreadSuspendAllForObjDeopt : public VM_Operation {
    virtual void doit() {
      Thread* ct = calling_thread();
      for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
+       if (jt->is_hidden_from_external_view()) continue;
        assert(!jt->is_ea_obj_deopt_suspend(), "bad synchronization");
        if (ct != jt) {
          jt->set_ea_obj_deopt_flag();
@@ -2618,6 +2619,7 @@ void JVMTIEscapeBarrier::sync_and_suspend_all() {
   VMThread::execute(&vm_suspend_all);
 #ifdef ASSERT
   for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
+    if (jt->is_hidden_from_external_view()) continue;
     assert(!jt->has_last_Java_frame() || jt->frame_anchor()->walkable(),
            "The stack of JavaThread " PTR_FORMAT " is not walkable. Thread state is %d",
            p2i(jt), jt->thread_state());
