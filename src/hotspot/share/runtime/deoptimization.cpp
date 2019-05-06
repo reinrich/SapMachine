@@ -159,33 +159,12 @@ JRT_END
 
 
 #if COMPILER2_OR_JVMCI
-// TODO: revise comment
-// Reallocate the non-escaping objects and restore their fields. Then
-// relock objects if synchronization on them was eliminated.
-// Optimized objects, i.e. objects replaced by their scalars or objects with
-// eliminated lock operations have to be deoptimized, i.e. relocked or
-// reallocated on the heap, before deoptimization or if a JVMTI agent accesses
-// them. That's what deoptimize_objects_in_vframes() really does.
-// In the case of deoptimization the objects are reallocated when the
-// comprising frame becomes top frame again. In the case of JVMTI
-// agents accessing optimized objects, these objs have to be deoptimized
-// just before the access, even if the referencing frame is not top of
-// stack and therefore cannot be deoptimized. Instead the frame is
-// only marked for later deoptimization. References to the reallocated
-// objects, are kept in JavaThread::deoptimized_objects().
-// New compiledVFrames include corresponding objects from
-// JavaThread::deoptimized_objects(), such that they appear in the results of
-// compiledVFrame::locals(), compiledVFrame::expressions(), and compiledVFrame::monitors().
-// The saved objects are installed into the interpreter frames when the deoptimization
-// finally happens or passed to the JVMTI agent when it accesses them
-// again. This is necessary for correctness, because if we would just reallocate
-// again, then we would end up with 2 or more clones of the same object, but
-// there _must_ be only one.
+// Deoptimize objects, that is reallocate and relock them. Either because the holding
+// compiled frame is being replaced by corresponding interpreter frames or because
+// they are about to escape through JVMTI (exec_mode == Unpack_none).
 bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compiledVFrame*>* chunk, bool& realloc_failures, int exec_mode) {
   bool deoptimized_objects = false;
 
-  // frame that is either in the process of being deoptimized or whose objects are deoptimized
-  // (because of JVMTI access)
   frame deoptee = chunk->at(0)->fr();
   JavaThread* deoptee_thread = chunk->at(0)->thread();
   RegisterMap map = *chunk->at(0)->register_map();
@@ -241,7 +220,7 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
             // A concurrent JVMTI agent thread stop the current thread in the JRT_BLOCK above
             // and deoptimized its objects
             realloc_failures = false; // ignore realloc failures if any occurred
-            return false; // current thread did not deoptimize objects
+            return false;             // current thread did not deoptimize objects
           }
         }
         CompiledMethod* cm = deoptee.cb()->as_compiled_method_or_null();
@@ -280,9 +259,6 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
                   first = false;
                   tty->print_cr("RELOCK OBJECTS in thread " INTPTR_FORMAT, p2i(thread));
                 }
-                // SAPJVM RR 2013-12-18: special case if deoptee_thread is blocked in
-                // wait() on this monitor. In that case relocking is done in
-                // ObjectMonitor::wait() just after the monitor was acquired again.
                 ObjectMonitor* monitor = deoptee_thread->current_waiting_monitor();
                 if (monitor != NULL && (oop)monitor->object() == mi->owner()) {
                   tty->print_cr("     object <" INTPTR_FORMAT "> DEFERRED relocking after wait", p2i(mi->owner()));
@@ -304,7 +280,7 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
     }
   }
 #endif // INCLUDE_JVMCI
-  return deoptimized_objects;  // SAPJVM RR 2013-11-20
+  return deoptimized_objects;
 }
 #endif // COMPILER2_OR_JVMCI
 

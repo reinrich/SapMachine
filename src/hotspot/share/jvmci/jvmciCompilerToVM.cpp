@@ -1474,7 +1474,7 @@ C2V_VMENTRY(void, materializeVirtualObjects, (JNIEnv* env, jobject, jobject _hs_
   bool realloc_failures = Deoptimization::realloc_objects(thread, fstAfterDeopt.current(), objects, Deoptimization::Unpack_none, CHECK);
   Deoptimization::reassign_fields(fstAfterDeopt.current(), fstAfterDeopt.register_map(), objects, realloc_failures, false);
 
-  // TODO: use deoptimize_objects()
+  // TODO: use Deoptimization::deoptimize_objects()
   for (int frame_index = 0; frame_index < virtualFrames->length(); frame_index++) {
     compiledVFrame* cvf = virtualFrames->at(frame_index);
 
@@ -1508,8 +1508,6 @@ C2V_VMENTRY(void, materializeVirtualObjects, (JNIEnv* env, jobject, jobject _hs_
     GrowableArray<MonitorInfo*>* monitors = cvf->monitors();
     if (monitors != NULL) {
       for (int i2 = 0; i2 < monitors->length(); i2++) {
-        // TODO: create update only for eliminated locks and only if
-        // a potential reallocation of the owner succeeded
         cvf->update_monitor(i2, monitors->at(i2));
       }
     }

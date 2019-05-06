@@ -1148,8 +1148,11 @@ void CodeInstaller::record_scope(jint pc_offset, JVMCIObject position, ScopeMode
     throw_exception = jvmci_env()->get_BytecodeFrame_rethrowException(frame) == JNI_TRUE;
   }
 
+  // TODO: add to JVMCI
+  const bool not_global_escape_in_scope = false;
+  const bool arg_escape                 = false;
   _debug_recorder->describe_scope(pc_offset, method, NULL, bci, reexecute, throw_exception, false, return_oop,
-                                  false /* TODO:not_global_escape_in_scope */, false /*arg_escape*/,
+                                  not_global_escape_in_scope, arg_escape,
                                   locals_token, expressions_token, monitors_token);
 }
 

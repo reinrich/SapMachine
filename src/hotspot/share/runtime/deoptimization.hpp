@@ -159,9 +159,7 @@ class Deoptimization : AllStatic {
   static void revoke_biases_of_monitors(JavaThread* thread, frame fr, RegisterMap* map);
 
 #if COMPILER2_OR_JVMCI
-  // Reallocate scalar replaced objects and relock objects either (a) to replace the owning compiled
-  // frame with corresponding interpreter frames or (b) to make them accessible for JVMTI
-  // agents. deoptimizing_frame == true indicates case (a). Returns false if reallocation fails.
+  // Deoptimize objects, that is reallocate and relock them.
   static bool deoptimize_objects(JavaThread* thread, GrowableArray<compiledVFrame*>* chunk, bool& realloc_failures, int exec_mode);
 
 JVMCI_ONLY(public:)
