@@ -341,7 +341,7 @@ bool ConnectionGraph::compute_escape() {
         }
         if (C->env()->jvmti_can_get_owned_monitor_info()) {
           // Jvmti agents can read monitors. Must provide info about local objects at runtime.
-          int num_mon = jvms->mon_size();
+          int num_mon = jvms->nof_monitors();
           for(int idx = 0; idx < num_mon && !found_not_global_escape; idx++ ) {
             Node* m = sfn->monitor_obj(jvms, idx);
             found_not_global_escape = m != NULL && not_global_escape(m);
