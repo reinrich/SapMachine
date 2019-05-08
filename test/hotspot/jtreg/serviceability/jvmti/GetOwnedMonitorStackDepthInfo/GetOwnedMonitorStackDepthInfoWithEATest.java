@@ -24,8 +24,8 @@
 /**
  * @test
  * @bug 7777777
- * @summary Test JVMTI's GetOwnedMonitorStackDepthInfo with scalar replaced objects and eliminated locks on stack
- * @requires vm.compiler2.enabled
+ * @summary (TODO:bugid above) Test JVMTI's GetOwnedMonitorStackDepthInfo with scalar replaced objects and eliminated locks on stack
+ * @requires (vm.compMode != "Xcomp" & vm.compiler2.enabled)
  * @library /test/lib
  * @compile GetOwnedMonitorStackDepthInfoWithEATest.java
  * @run main/othervm/native
@@ -122,8 +122,6 @@
  */
 
 import jdk.test.lib.Asserts;
-
-// TODO: revise section above
 
 public class GetOwnedMonitorStackDepthInfoWithEATest {
 
@@ -319,3 +317,4 @@ public class GetOwnedMonitorStackDepthInfoWithEATest {
         }
     }
 }
+

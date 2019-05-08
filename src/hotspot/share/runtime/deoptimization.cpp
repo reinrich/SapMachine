@@ -1153,7 +1153,6 @@ void Deoptimization::reassign_fields(frame* fr, RegisterMap* reg_map, GrowableAr
 // relock objects for which synchronization was eliminated
 bool Deoptimization::relock_objects(JavaThread* thread, GrowableArray<MonitorInfo*>* monitors,
                                     JavaThread* deoptee_thread, frame* fr, int exec_mode, bool realloc_failures) {
-  //TODO
   bool relocked_objects = false;
   for (int i = 0; i < monitors->length(); i++) {
     MonitorInfo* mon_info = monitors->at(i);

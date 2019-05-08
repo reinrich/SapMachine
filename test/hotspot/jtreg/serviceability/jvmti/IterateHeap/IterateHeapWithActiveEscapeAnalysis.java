@@ -24,8 +24,8 @@
 /**
  * @test
  * @bug 7777777
- * @summary TODO
- * @requires vm.compiler2.enabled
+ * @summary (TODO:bugid above) Check if scalar replaced objects (see escape analysis) are visited when iterating the java heap with JVMTI means.
+ * @requires (vm.compMode != "Xcomp" & vm.compiler2.enabled)
  * @library /test/lib
  * @compile IterateHeapWithActiveEscapeAnalysis.java
  * @run main/othervm/native
@@ -70,8 +70,6 @@
  */
 
 import jdk.test.lib.Asserts;
-
-// TODO: revise section above
 
 public class IterateHeapWithActiveEscapeAnalysis {
 

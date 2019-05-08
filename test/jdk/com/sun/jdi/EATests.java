@@ -24,10 +24,10 @@
 /**
  * @test
  * @bug 7777777
- * @summary TODO: Materialize object in non-topframe at call returning an object
+ * @summary Collection of test cases that check if optimizations based on escape analysis are reverted just before non-escaping objects escape through JVMTI.
  * @author Richard Reingruber richard DOT reingruber AT sap DOT com
  *
- * @requires vm.compiler2.enabled
+ * @requires (vm.compMode != "Xcomp" & vm.compiler2.enabled)
  * @library /test/lib /test/hotspot/jtreg
  *
  * @run build TestScaffold VMConnection TargetListener TargetAdapter sun.hotspot.WhiteBox
@@ -141,37 +141,8 @@ import jdk.test.lib.Asserts;
 import sun.hotspot.WhiteBox;
 
 
-/*
-Manual execution:
-    REPO=$1 # e.g. /priv/d038402/hg/jdk
-    shift
-    VMOPTS="$@"
-    CLS_PATH="-cp ${REPO}/OpenJDKEclipseProjs/test.jdk/bin:${REPO}/OpenJDKEclipseProjs/test.lib/bin:${REPO}/OpenJDKEclipseProjs/test.compiler.testlibrary/bin"
-    CMD=(
-        ./images/jdk/bin/java
-        -Dtest.jdk="$(pwd)/images/jdk"
-        $CLS_PATH
-        $VMOPTS
-        -agentlib:jdwp=transport=dt_socket,address=9000,server=y,suspend=n
-        EATests
-
-        -Xbootclasspath/a:${REPO}/OpenJDKEclipseProjs/test.lib/bin  # WhiteBox.class
-        -XX:+UnlockDiagnosticVMOptions
-        -XX:+WhiteBoxAPI
-        $CLS_PATH
-        -XX:+TraceDeoptimization
-        -XX:+PrintCompilation
-        -XX:+PrintInlining
-        -XX:-TieredCompilation
-        -Xbatch
-        $VMOPTS
-        -XX:CompileCommand=dontinline,*::dontinline_*
-        -XX:CICompilerCount=1
-    )
-    print_and_run "${CMD[@]}"
-*/
-
 // TODO: remove trace options like '-XX:+PrintCompilation -XX:+PrintInlining' to avoid deadlock as in https://bugs.openjdk.java.net/browse/JDK-8213902
+// Alternatively: exclude Xcomp mode
 
 /////////////////////////////////////////////////////////////////////////////
 //

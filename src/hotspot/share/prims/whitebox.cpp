@@ -821,7 +821,6 @@ WB_ENTRY(jint, WB_DeoptimizeFrames(JNIEnv* env, jobject o, jboolean make_not_ent
   return op.result();
 WB_END
 
-// TODO!!!
 WB_ENTRY(jboolean, WB_IsFrameDeoptimized(JNIEnv* env, jobject o, jint depth))
   JavaThread* t = JavaThread::current();
   RegisterMap reg_map(t);
