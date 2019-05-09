@@ -352,32 +352,31 @@ bool ConnectionGraph::compute_escape() {
       }
       sfn->set_not_global_escape_in_scope(found_not_global_escape);
 
-      if (!sfn->is_CallJava()) continue;
-
-      CallJavaNode* call = sfn->as_CallJava();
-      if (call->method() != NULL) {
+      if (sfn->is_CallJava()) {
+        CallJavaNode* call = sfn->as_CallJava();
         bool found_arg_escape_in_params = false;
-        uint param_limit = TypeFunc::Parms + call->method()->arg_size();
-        for(uint idx = TypeFunc::Parms; idx < param_limit && !found_arg_escape_in_params; idx++) {
-          Node* p = call->in(idx);
-          found_arg_escape_in_params = not_global_escape(p);
-        }
-        call->set_arg_escape(found_arg_escape_in_params);
-      } else {
-        const char* name = call->as_CallStaticJava()->_name;
-        assert(name != NULL, "no name");
-        // no arg escapes through uncommon traps
-        if (strcmp(name, "uncommon_trap") != 0) {
-          // process_call_arguments() assumes that all arguments escape globally
-          const TypeTuple* d = call->tf()->domain();
-          for (uint i = TypeFunc::Parms; i < d->cnt(); i++) {
-            const Type* at = d->field_at(i);
-            if (at->isa_oopptr() != NULL) {
-              call->set_arg_escape(true);
-              break;
+        if (call->method() != NULL) {
+          uint max_idx = TypeFunc::Parms + call->method()->arg_size();
+          for(uint idx = TypeFunc::Parms; idx < max_idx && !found_arg_escape_in_params; idx++) {
+            Node* p = call->in(idx);
+            found_arg_escape_in_params = not_global_escape(p);
+          }
+        } else {
+          const char* name = call->as_CallStaticJava()->_name;
+          assert(name != NULL, "no name");
+          // no arg escapes through uncommon traps
+          if (strcmp(name, "uncommon_trap") != 0) {
+            // process_call_arguments() assumes that all arguments escape globally
+            const TypeTuple* d = call->tf()->domain();
+            for (uint i = TypeFunc::Parms; i < d->cnt() && !found_arg_escape_in_params; i++) {
+              const Type* at = d->field_at(i);
+              if (at->isa_oopptr() != NULL) {
+                found_arg_escape_in_params = true;
+              }
             }
           }
         }
+        call->set_arg_escape(found_arg_escape_in_params);
       }
     }
   }
