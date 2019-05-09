@@ -25,6 +25,7 @@
  * @test
  * @bug 7777777
  * @summary Collection of test cases that check if optimizations based on escape analysis are reverted just before non-escaping objects escape through JVMTI.
+ * @comment TODO: adapt graal
  * @author Richard Reingruber richard DOT reingruber AT sap DOT com
  *
  * @requires (vm.compMode != "Xcomp" & vm.compiler2.enabled)
@@ -141,9 +142,6 @@ import jdk.test.lib.Asserts;
 import sun.hotspot.WhiteBox;
 
 
-// TODO: remove trace options like '-XX:+PrintCompilation -XX:+PrintInlining' to avoid deadlock as in https://bugs.openjdk.java.net/browse/JDK-8213902
-// Alternatively: exclude Xcomp mode
-
 /////////////////////////////////////////////////////////////////////////////
 //
 // Shared base class for test cases for both, debugger and debuggee.
@@ -151,7 +149,8 @@ import sun.hotspot.WhiteBox;
 /////////////////////////////////////////////////////////////////////////////
 
 class EATestCaseBaseShared {
-    public static final boolean TODO_INTERACTIVE = false;
+    // In interactive mode we wait for a keypress before every test case.
+    public static final boolean INTERACTIVE = false;
     
     // If the property is given, then just the test case it refers to is executed.
     // Use it to diagnose test failures.
@@ -388,7 +387,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared implements R
             msgHL("Executing test case " + getClass().getName());
             env.testFailed = false;
 
-            if (TODO_INTERACTIVE)
+            if (INTERACTIVE)
                 env.waitForInput();
 
             resumeToWarmupDone();
@@ -1006,7 +1005,6 @@ class EAMaterializeLocalAtObjectReturnTarget extends EATestCaseBaseTarget {
         testMethodDepth = 2;
     }
 
-    // TODO: Materialize object in non-topframe at call returning an object
     public void dontinline_testMethod() {
         PointXY xy = new PointXY(4, 2);
         Integer io = dontinline_brkpt_return_Integer();
@@ -1513,7 +1511,8 @@ class EARelockingRecursive extends EATestCaseBaseDebugger {
 
 /////////////////////////////////////////////////////////////////////////////
 
-//// Checks if an eliminated nested lock of an inflated monitor can be relocked.
+// Object ref l1 is retrieved by the debugger at a location where nested lockes are ommitted. The
+// accessed object is globally reachable already before the access, therefore no relocking is done.
 class EARelockingNestedInflatedTarget extends EATestCaseBaseTarget {
 
     @Override
@@ -1522,10 +1521,9 @@ class EARelockingNestedInflatedTarget extends EATestCaseBaseTarget {
         testMethodDepth = 2;
     }
 
-// TODO: is it really necessary to deoptimize here?
     @Override
     public boolean testFrameShouldBeDeoptimized() {
-//        return DoEscapeAnalysis && EliminateLocks;
+        // Access does not trigger deopt., as escape state is already global escape.
         return false;
     }
 
@@ -1560,7 +1558,6 @@ class EARelockingNestedInflated extends EATestCaseBaseDebugger {
  * a scalar replaced object in the scope from which the object with eliminated nested locking
  * is read. This triggers materialization and relocking.
  */
-// TODO: remove the test, because it merely tests a property of the implementation.
 class EARelockingNestedInflated_02 extends EATestCaseBaseDebugger {
     
     public void runTestCase() throws Exception {
@@ -1902,7 +1899,7 @@ class EADeoptFrameAfterReadLocalObject_02DTarget extends EATestCaseBaseTarget {
     }
 
     public void dontinline_callee(PointXY xy) {
-        if (warmupDone) { // TODO: crashes if doing call during warmup
+        if (warmupDone) {
             dontinline_call_with_entry_frame(this, "dontinline_callee_accessed_by_debugger");
         }
     }
