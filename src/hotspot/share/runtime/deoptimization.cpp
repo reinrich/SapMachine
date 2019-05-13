@@ -2524,7 +2524,7 @@ void JVMTIEscapeBarrier::sync_and_suspend_one() {
       _self_deoptimization_in_progress = true;
     }
 
-    while (_deoptee_thread->is_deopt_suspend()) {
+    while (_deoptee_thread->is_ea_obj_deopt_suspend()) {
       JvmtiObjReallocRelock_lock->wait();
     }
 
@@ -2581,7 +2581,7 @@ void JVMTIEscapeBarrier::sync_and_suspend_all() {
     bool deopt_in_progress = false;
     do {
       for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
-        if (jt->is_deopt_suspend()) {
+        if (jt->is_ea_obj_deopt_suspend()) {
           deopt_in_progress = true;
           JvmtiObjReallocRelock_lock->wait();
           break; // check all threads again

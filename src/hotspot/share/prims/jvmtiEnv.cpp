@@ -1345,7 +1345,7 @@ JvmtiEnv::RunAgentThread(jthread thread, jvmtiStartFunction proc, const void* ar
 
     while (JVMTIEscapeBarrier::deoptimizing_objects_for_all_threads()) {
       // Must not add new threads that push frames with ea based optimizations
-      Threads_lock->wait(!Monitor::_no_safepoint_check_flag, 0, Monitor::_as_suspend_equivalent_flag);
+      Threads_lock->wait(0, Monitor::_as_suspend_equivalent_flag);
     }
 
     JvmtiAgentThread *new_thread = new JvmtiAgentThread(this, proc, arg);

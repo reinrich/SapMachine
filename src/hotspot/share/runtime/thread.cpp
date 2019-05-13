@@ -2499,21 +2499,20 @@ void JavaThread::wait_for_object_deoptimization() {
   do {
     set_thread_state(_thread_blocked);
     set_suspend_equivalent();
-    MutexLockerEx ml(JvmtiObjReallocRelock_lock, Monitor::_no_safepoint_check_flag);
+    MonitorLocker ml(JvmtiObjReallocRelock_lock, Monitor::_no_safepoint_check_flag);
     if (is_ea_obj_deopt_suspend()) {
-      JvmtiObjReallocRelock_lock->wait(Monitor::_no_safepoint_check_flag);
+      ml.wait();
     }
     if (handle_special_suspend_equivalent_condition()) {
-      MutexUnlockerEx mu(JvmtiObjReallocRelock_lock, Monitor::_no_safepoint_check_flag);
+      MutexUnlocker mu(JvmtiObjReallocRelock_lock, Monitor::_no_safepoint_check_flag);
       java_suspend_self();
     }
-    set_thread_state(state);
+    set_thread_state_fence(state);
   } while (is_ea_obj_deopt_suspend());
 
   // Since we are not using a regular thread-state transition helper here,
   // we must manually emit the instruction barrier after leaving a safe state.
   OrderAccess::cross_modify_fence();
-  InterfaceSupport::serialize_thread_state_with_handler(this);
   if (state != _thread_in_native) {
     SafepointMechanism::block_if_requested(this);
   }
