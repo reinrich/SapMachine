@@ -41,7 +41,6 @@
  *                 -Xbootclasspath/a:.
  *                 -XX:CompileCommand=dontinline,*::dontinline_*
  *                 -XX:+WhiteBoxAPI
- *                 -XX:+TraceDeoptimization
  *                 -XX:+PrintCompilation
  *                 -XX:+PrintInlining
  *                 -XX:-TieredCompilation
@@ -54,7 +53,6 @@
  *                 -Xbootclasspath/a:.
  *                 -XX:CompileCommand=dontinline,*::dontinline_*
  *                 -XX:+WhiteBoxAPI
- *                 -XX:+TraceDeoptimization
  *                 -XX:+PrintCompilation
  *                 -XX:+PrintInlining
  *                 -XX:-TieredCompilation
@@ -67,7 +65,6 @@
  *                 -Xbootclasspath/a:.
  *                 -XX:CompileCommand=dontinline,*::dontinline_*
  *                 -XX:+WhiteBoxAPI
- *                 -XX:+TraceDeoptimization
  *                 -XX:+PrintCompilation
  *                 -XX:+PrintInlining
  *                 -XX:-TieredCompilation
@@ -80,7 +77,6 @@
  *                 -Xbootclasspath/a:.
  *                 -XX:CompileCommand=dontinline,*::dontinline_*
  *                 -XX:+WhiteBoxAPI
- *                 -XX:+TraceDeoptimization
  *                 -XX:+PrintCompilation
  *                 -XX:+PrintInlining
  *                 -XX:-TieredCompilation
@@ -93,7 +89,6 @@
  *                 -Xbootclasspath/a:.
  *                 -XX:CompileCommand=dontinline,*::dontinline_*
  *                 -XX:+WhiteBoxAPI
- *                 -XX:+TraceDeoptimization
  *                 -XX:+PrintCompilation
  *                 -XX:+PrintInlining
  *                 -XX:-TieredCompilation
@@ -106,7 +101,6 @@
  *                 -Xbootclasspath/a:.
  *                 -XX:CompileCommand=dontinline,*::dontinline_*
  *                 -XX:+WhiteBoxAPI
- *                 -XX:+TraceDeoptimization
  *                 -XX:+PrintCompilation
  *                 -XX:+PrintInlining
  *                 -XX:-TieredCompilation
@@ -119,7 +113,6 @@
  *                 -Xbootclasspath/a:.
  *                 -XX:CompileCommand=dontinline,*::dontinline_*
  *                 -XX:+WhiteBoxAPI
- *                 -XX:+TraceDeoptimization
  *                 -XX:+PrintCompilation
  *                 -XX:+PrintInlining
  *                 -XX:-TieredCompilation

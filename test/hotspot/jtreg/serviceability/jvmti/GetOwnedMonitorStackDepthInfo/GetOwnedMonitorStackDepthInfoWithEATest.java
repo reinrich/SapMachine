@@ -33,7 +33,6 @@
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
- *                  -XX:+TraceDeoptimization
  *                  -XX:+PrintCompilation
  *                  -XX:+PrintInlining
  *                  -XX:-TieredCompilation
@@ -46,7 +45,6 @@
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
- *                  -XX:+TraceDeoptimization
  *                  -XX:+PrintCompilation
  *                  -XX:+PrintInlining
  *                  -XX:-TieredCompilation
@@ -59,7 +57,6 @@
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
- *                  -XX:+TraceDeoptimization
  *                  -XX:+PrintCompilation
  *                  -XX:+PrintInlining
  *                  -XX:-TieredCompilation
@@ -72,7 +69,6 @@
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
- *                  -XX:+TraceDeoptimization
  *                  -XX:+PrintCompilation
  *                  -XX:+PrintInlining
  *                  -XX:-TieredCompilation
@@ -85,7 +81,6 @@
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
- *                  -XX:+TraceDeoptimization
  *                  -XX:+PrintCompilation
  *                  -XX:+PrintInlining
  *                  -XX:-TieredCompilation
@@ -98,7 +93,6 @@
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
- *                  -XX:+TraceDeoptimization
  *                  -XX:+PrintCompilation
  *                  -XX:+PrintInlining
  *                  -XX:-TieredCompilation
@@ -111,7 +105,6 @@
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
- *                  -XX:+TraceDeoptimization
  *                  -XX:+PrintCompilation
  *                  -XX:+PrintInlining
  *                  -XX:-TieredCompilation
