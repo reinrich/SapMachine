@@ -134,8 +134,6 @@ Java_GetOwnedMonitorStackDepthInfoWithEATest_getOwnedMonitorStackDepthInfo(JNIEn
     jvmtiThreadInfo threadInfo;
     jint monitorCount;
     jvmtiMonitorStackDepthInfo* stackDepthInfo;
-    jclass lock1Class;
-    jclass lock2Class;
 
     jint idx = 0;
 

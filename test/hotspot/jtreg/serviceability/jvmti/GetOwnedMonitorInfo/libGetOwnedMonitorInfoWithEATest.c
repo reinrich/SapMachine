@@ -134,8 +134,6 @@ Java_GetOwnedMonitorInfoWithEATest_getOwnedMonitorInfo(JNIEnv *env, jclass cls, 
     jvmtiThreadInfo threadInfo;
     jint monitorCount;
     jobject* monitors;
-    jclass lock1Class;
-    jclass lock2Class;
 
     jint idx = 0;
 
@@ -155,7 +153,6 @@ Java_GetOwnedMonitorInfoWithEATest_getOwnedMonitorInfo(JNIEnv *env, jclass cls, 
 
     printf("getOwnedMonitorsFor: %s owns %d monitor(s)\n", threadInfo.name, monitorCount);
 
-    jboolean isCopy;
     for (idx = 0; idx < monitorCount; idx++) {
       (*env)->SetObjectArrayElement(env, resOwnedMonitors, idx, monitors[idx]);
     }
