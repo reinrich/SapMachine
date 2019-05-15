@@ -517,7 +517,7 @@ public:
 
   // Used to prevent that new threads pop up, until the triggering operation has completed.
   static bool deoptimizing_objects_for_all_threads()                                  NOT_COMPILER2_OR_JVMCI_RETURN_(false);
-  static void set_deoptimizing_objects_for_all_threads(bool v)                        NOT_COMPILER2_OR_JVMCI_RETURN_();
+  static void set_deoptimizing_objects_for_all_threads(bool v)                        NOT_COMPILER2_OR_JVMCI_RETURN;
 
 #ifdef COMPILER2_OR_JVMCI
   ~JVMTIEscapeBarrier() {
