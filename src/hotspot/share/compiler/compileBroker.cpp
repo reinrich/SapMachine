@@ -747,7 +747,7 @@ JavaThread* CompileBroker::make_thread(ThreadType type, jobject thread_handle, C
     } else if (type == sweeper_t) {
       thread = new CodeCacheSweeperThread();
     }
-#ifdef ASSERT
+#if defined(ASSERT) && COMPILER2_OR_JVMCI
     else {
       thread = new DeoptimizeObjectsALotThread();
     }
@@ -891,14 +891,14 @@ void CompileBroker::init_compiler_sweeper_threads() {
     make_thread(sweeper_t, thread_handle, NULL, NULL, CHECK);
   }
 
-#if defined(ASSERT) && defined(COMPILER2_OR_JVMCI)
+#if defined(ASSERT) && COMPILER2_OR_JVMCI
   if (DeoptimizeObjectsALot == 2) {
     // Initialize and start the object deoptimizer thread
     Handle thread_oop = create_thread_oop("Deoptimize objects a lot thread", CHECK);
     jobject thread_handle = JNIHandles::make_local(THREAD, thread_oop());
     make_thread(deoptimizer_t, thread_handle, NULL, NULL, CHECK);
   }
-#endif // defined(ASSERT) && defined(COMPILER2_OR_JVMCI)
+#endif // defined(ASSERT) && COMPILER2_OR_JVMCI
 }
 
 void CompileBroker::possibly_add_compiler_threads() {

@@ -462,10 +462,10 @@ JVMCI_ONLY(public:)
  public:
   static void update_method_data_from_interpreter(MethodData* trap_mdo, int trap_bci, int reason);
 
-#if defined(ASSERT) && defined(COMPILER2_OR_JVMCI)
+#if defined(ASSERT) && COMPILER2_OR_JVMCI
   // Revert optimizations based on escape analysis for all compiled frames of all Java threads.
   static void deoptimize_objects_alot_loop();
-#endif // defined(ASSERT) && defined(COMPILER2_OR_JVMCI)
+#endif // defined(ASSERT) && COMPILER2_OR_JVMCI
 };
 
 // JVMTIEscapeBarriers should be put on execution paths, where JVMTI agents can access object
@@ -479,7 +479,7 @@ class JVMTIEscapeBarrier : StackObj {
   JavaThread* const _deoptee_thread;
   bool        const _should_deopt;
 
-#ifdef COMPILER2_OR_JVMCI
+#if COMPILER2_OR_JVMCI
   void sync_and_suspend_one();
   void sync_and_suspend_all();
   void resume_one();
@@ -519,7 +519,7 @@ public:
   static bool deoptimizing_objects_for_all_threads()                                  NOT_COMPILER2_OR_JVMCI_RETURN_(false);
   static void set_deoptimizing_objects_for_all_threads(bool v)                        NOT_COMPILER2_OR_JVMCI_RETURN;
 
-#ifdef COMPILER2_OR_JVMCI
+#if COMPILER2_OR_JVMCI
   ~JVMTIEscapeBarrier() {
     if (!should_deopt()) return;
     if (all_threads()) {
