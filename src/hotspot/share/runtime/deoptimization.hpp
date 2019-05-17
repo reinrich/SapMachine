@@ -175,7 +175,6 @@ JVMCI_ONLY(public:)
 #endif // COMPILER2_OR_JVMCI
 
   public:
-
   static vframeArray* create_vframeArray(JavaThread* thread, frame fr, RegisterMap *reg_map, GrowableArray<compiledVFrame*>* chunk, bool realloc_failures);
 
   // Interface used for unpacking deoptimized frames
