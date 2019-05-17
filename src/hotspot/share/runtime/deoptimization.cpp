@@ -184,7 +184,7 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
           assert(thread->thread_state() == _thread_in_vm, "assumption");
           Thread* THREAD = thread;
           // Clear pending OOM if reallocation fails and return false, i.e. no objects deoptimized.
-          realloc_failures = realloc_objects(thread, &deoptee, objects, exec_mode, CHECK_AND_CLEAR_false);
+          realloc_failures = realloc_objects(thread, &deoptee, objects, CHECK_AND_CLEAR_false);
         } else {
           // The flag return_oop() indicates call sites which return oop
           // in compiled code. Such sites include java method calls,
@@ -210,7 +210,7 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
             }
           }
           JRT_BLOCK
-            realloc_failures = realloc_objects(thread, &deoptee, objects, exec_mode, THREAD);
+            realloc_failures = realloc_objects(thread, &deoptee, objects, THREAD);
           JRT_BLOCK_END
           if (save_oop_result) {
             // Restore result.
@@ -846,7 +846,7 @@ Deoptimization::DeoptAction Deoptimization::_unloaded_action
   = Deoptimization::Action_reinterpret;
 
 #if COMPILER2_OR_JVMCI
-bool Deoptimization::realloc_objects(JavaThread* thread, frame* fr, GrowableArray<ScopeValue*>* objects, int exec_mode, TRAPS) {
+bool Deoptimization::realloc_objects(JavaThread* thread, frame* fr, GrowableArray<ScopeValue*>* objects, TRAPS) {
   Handle pending_exception(THREAD, thread->pending_exception());
   const char* exception_file = thread->exception_file();
   int exception_line = thread->exception_line();
