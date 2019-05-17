@@ -508,15 +508,16 @@ public:
   // Remember that objects were reallocated and relocked for the compiled frame with the given id
   static void set_objs_are_deoptimized(JavaThread* thread, intptr_t* fr_id);
 
-  // Relallocates and relocks objects in the given compiled frame to make them accessible through JVMTI
-  bool deoptimize_objects(compiledVFrame* cvf)                                        NOT_COMPILER2_OR_JVMCI_RETURN_(true);
-  bool deoptimize_objects(intptr_t* fr_id)                                            NOT_COMPILER2_OR_JVMCI_RETURN_(true);
-  bool deoptimize_objects(int depth)                                                  NOT_COMPILER2_OR_JVMCI_RETURN_(true);
-  bool deoptimize_objects_all_threads()                                               NOT_COMPILER2_OR_JVMCI_RETURN_(true);
+  // Methods to reallocate and relock objects in one or all compiled frames.
+  // The methods return false iff at least one reallocation failed.
+  bool deoptimize_objects(compiledVFrame* cvf)                 NOT_COMPILER2_OR_JVMCI_RETURN_(true);
+  bool deoptimize_objects(intptr_t* fr_id)                     NOT_COMPILER2_OR_JVMCI_RETURN_(true);
+  bool deoptimize_objects(int depth)                           NOT_COMPILER2_OR_JVMCI_RETURN_(true);
+  bool deoptimize_objects_all_threads()                        NOT_COMPILER2_OR_JVMCI_RETURN_(true);
 
   // Used to prevent that new threads pop up, until the triggering operation has completed.
-  static bool deoptimizing_objects_for_all_threads()                                  NOT_COMPILER2_OR_JVMCI_RETURN_(false);
-  static void set_deoptimizing_objects_for_all_threads(bool v)                        NOT_COMPILER2_OR_JVMCI_RETURN;
+  static bool deoptimizing_objects_for_all_threads()           NOT_COMPILER2_OR_JVMCI_RETURN_(false);
+  static void set_deoptimizing_objects_for_all_threads(bool v) NOT_COMPILER2_OR_JVMCI_RETURN;
 
 #if COMPILER2_OR_JVMCI
   ~JVMTIEscapeBarrier() {

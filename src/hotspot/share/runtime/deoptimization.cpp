@@ -2632,15 +2632,10 @@ void JVMTIEscapeBarrier::resume_all() {
   JvmtiObjReallocRelock_lock->notify_all();
 }
 
-// Reallocate stack allocated objects on the heap. Relock objects if locking has
-// been eliminated. The frame is marked for later deoptimization. Reallocated
-// objects are saved in JavaThread::deoptimized_objects() until then.
-// Deoptimization is necessary, because both, the JVMTI thread and the thread
-// with the optimized objects must use the same reallocated objects. If
-// execution would continue in the compiled method, then the scalar-replaced
-// version would be used.
-// JvmtiObjReallocRelock_lock is used to sync concurrent JVMTI threads.
-// Returns false upon failure, true otherwise.
+// Deoptimize objects, i.e. reallocate scalar replaced objects on the heap and relock objects if
+// locking has been eliminated. The holding compiled frame is marked for later deoptimization.
+// Until then the deoptimized objects are kept as deferred updates.
+// Returns false iff at least one reallocation failed
 bool JVMTIEscapeBarrier::deoptimize_objects(JavaThread* deoptee, frame* fr, const RegisterMap *reg_map) {
   if (!should_deopt()) return true;
 

@@ -570,9 +570,6 @@ public:
   // Perform escape analysis
   static void do_analysis(Compile *C, PhaseIterGVN *igvn);
 
-  // Return true if we know the node does not escape the compiled frame.
-  bool is_non_escape(Node *n);
-
   bool not_global_escape(Node *n);
 
   // To be used by, e.g., BarrierSetC2 impls

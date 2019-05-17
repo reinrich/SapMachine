@@ -342,7 +342,7 @@ bool ConnectionGraph::compute_escape() {
           }
         }
         if (C->env()->jvmti_can_get_owned_monitor_info() || DeoptimizeObjectsALot) {
-          // Jvmti agents can read monitors. Must provide info about local objects at runtime.
+          // Jvmti agents can read monitors. Must provide info about locked objects at runtime.
           int num_mon = jvms->nof_monitors();
           for(int idx = 0; idx < num_mon && !found_not_global_escape; idx++ ) {
             Node* m = sfn->monitor_obj(jvms, idx);
@@ -354,12 +354,12 @@ bool ConnectionGraph::compute_escape() {
 
       if (sfn->is_CallJava()) {
         CallJavaNode* call = sfn->as_CallJava();
-        bool found_arg_escape_in_params = false;
+        bool found_arg_escape_in_args = false;
         if (call->method() != NULL) {
           uint max_idx = TypeFunc::Parms + call->method()->arg_size();
-          for(uint idx = TypeFunc::Parms; idx < max_idx && !found_arg_escape_in_params; idx++) {
+          for(uint idx = TypeFunc::Parms; idx < max_idx && !found_arg_escape_in_args; idx++) {
             Node* p = call->in(idx);
-            found_arg_escape_in_params = not_global_escape(p);
+            found_arg_escape_in_args = not_global_escape(p);
           }
         } else {
           const char* name = call->as_CallStaticJava()->_name;
@@ -368,15 +368,15 @@ bool ConnectionGraph::compute_escape() {
           if (strcmp(name, "uncommon_trap") != 0) {
             // process_call_arguments() assumes that all arguments escape globally
             const TypeTuple* d = call->tf()->domain();
-            for (uint i = TypeFunc::Parms; i < d->cnt() && !found_arg_escape_in_params; i++) {
+            for (uint i = TypeFunc::Parms; i < d->cnt() && !found_arg_escape_in_args; i++) {
               const Type* at = d->field_at(i);
               if (at->isa_oopptr() != NULL) {
-                found_arg_escape_in_params = true;
+                found_arg_escape_in_args = true;
               }
             }
           }
         }
-        call->set_arg_escape(found_arg_escape_in_params);
+        call->set_arg_escape(found_arg_escape_in_args);
       }
     }
   }
