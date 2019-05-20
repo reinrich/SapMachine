@@ -276,11 +276,11 @@ inline JavaCallWrapper** frame::entry_frame_call_wrapper_addr() const {
   return (JavaCallWrapper**) &entry_frame_locals()->call_wrapper_address;
 }
 
-inline oop frame::saved_oop_result(RegisterMap* map) const {
+inline oop frame::saved_oop_result(const RegisterMap* map) const {
   return *((oop*) map->location(Z_R2->as_VMReg()));  // R2 is return register.
 }
 
-inline void frame::set_saved_oop_result(RegisterMap* map, oop obj) {
+inline void frame::set_saved_oop_result(const RegisterMap* map, oop obj) {
   *((oop*) map->location(Z_R2->as_VMReg())) = obj;  // R2 is return register.
 }
 

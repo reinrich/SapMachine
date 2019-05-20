@@ -167,7 +167,7 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
 
   frame deoptee = chunk->at(0)->fr();
   JavaThread* deoptee_thread = chunk->at(0)->thread();
-  RegisterMap map = *chunk->at(0)->register_map();
+  const RegisterMap* map = chunk->at(0)->register_map();
 
   assert(!JVMTIEscapeBarrier::objs_are_deoptimized(deoptee_thread, deoptee.id()), "must relock just once");
   assert(exec_mode == Unpack_none || (deoptee_thread == thread), "a frame can only be deoptimized by the owner thread");
@@ -200,7 +200,7 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
           if (save_oop_result) {
             // Reallocation may trigger GC. If deoptimization happened on return from
             // call which returns oop we need to save it since it is not in oopmap.
-            oop result = deoptee.saved_oop_result(&map);
+            oop result = deoptee.saved_oop_result(map);
             assert(oopDesc::is_oop_or_null(result), "must be oop");
             return_value = Handle(thread, result);
             assert(Universe::heap()->is_in_or_null(result), "must be heap pointer");
@@ -214,7 +214,7 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
           JRT_BLOCK_END
           if (save_oop_result) {
             // Restore result.
-            deoptee.set_saved_oop_result(&map, return_value());
+            deoptee.set_saved_oop_result(map, return_value());
           }
           if (JVMTIEscapeBarrier::objs_are_deoptimized(deoptee_thread, deoptee.id())) {
             // A concurrent JVMTI agent thread stop the current thread in the JRT_BLOCK above
@@ -225,7 +225,7 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
         }
         CompiledMethod* cm = deoptee.cb()->as_compiled_method_or_null();
         bool skip_internal = (cm != NULL) && !cm->is_compiled_by_jvmci();
-        reassign_fields(&deoptee, &map, objects, realloc_failures, skip_internal);
+        reassign_fields(&deoptee, map, objects, realloc_failures, skip_internal);
         deoptimized_objects = true;
 #ifndef PRODUCT
         if (TraceDeoptimization) {
@@ -894,7 +894,7 @@ bool Deoptimization::realloc_objects(JavaThread* thread, frame* fr, GrowableArra
 }
 
 // restore elements of an eliminated type array
-void Deoptimization::reassign_type_array_elements(frame* fr, RegisterMap* reg_map, ObjectValue* sv, typeArrayOop obj, BasicType type) {
+void Deoptimization::reassign_type_array_elements(frame* fr, const RegisterMap* reg_map, ObjectValue* sv, typeArrayOop obj, BasicType type) {
   int index = 0;
   intptr_t val;
 
@@ -991,7 +991,7 @@ void Deoptimization::reassign_type_array_elements(frame* fr, RegisterMap* reg_ma
 
 
 // restore fields of an eliminated object array
-void Deoptimization::reassign_object_array_elements(frame* fr, RegisterMap* reg_map, ObjectValue* sv, objArrayOop obj) {
+void Deoptimization::reassign_object_array_elements(frame* fr, const RegisterMap* reg_map, ObjectValue* sv, objArrayOop obj) {
   for (int i = 0; i < sv->field_size(); i++) {
     StackValue* value = StackValue::create_stack_value(fr, reg_map, sv->field_at(i));
     assert(value->type() == T_OBJECT, "object element expected");
@@ -1016,7 +1016,7 @@ int compare(ReassignedField* left, ReassignedField* right) {
 
 // Restore fields of an eliminated instance object using the same field order
 // returned by HotSpotResolvedObjectTypeImpl.getInstanceFields(true)
-static int reassign_fields_by_klass(InstanceKlass* klass, frame* fr, RegisterMap* reg_map, ObjectValue* sv, int svIndex, oop obj, bool skip_internal) {
+static int reassign_fields_by_klass(InstanceKlass* klass, frame* fr, const RegisterMap* reg_map, ObjectValue* sv, int svIndex, oop obj, bool skip_internal) {
   if (klass->superklass() != NULL) {
     svIndex = reassign_fields_by_klass(klass->superklass(), fr, reg_map, sv, svIndex, obj, skip_internal);
   }
@@ -1124,7 +1124,7 @@ static int reassign_fields_by_klass(InstanceKlass* klass, frame* fr, RegisterMap
 }
 
 // restore fields of all eliminated objects and arrays
-void Deoptimization::reassign_fields(frame* fr, RegisterMap* reg_map, GrowableArray<ScopeValue*>* objects, bool realloc_failures, bool skip_internal) {
+void Deoptimization::reassign_fields(frame* fr, const RegisterMap* reg_map, GrowableArray<ScopeValue*>* objects, bool realloc_failures, bool skip_internal) {
   for (int i = 0; i < objects->length(); i++) {
     ObjectValue* sv = (ObjectValue*) objects->at(i);
     Klass* k = java_lang_Class::as_Klass(sv->klass()->as_ConstantOopReadValue()->value()());

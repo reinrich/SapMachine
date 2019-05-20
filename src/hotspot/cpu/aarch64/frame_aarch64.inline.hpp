@@ -231,14 +231,14 @@ inline JavaCallWrapper** frame::entry_frame_call_wrapper_addr() const {
 
 // Compiled frames
 
-inline oop frame::saved_oop_result(RegisterMap* map) const {
+inline oop frame::saved_oop_result(const RegisterMap* map) const {
   oop* result_adr = (oop *)map->location(r0->as_VMReg());
   guarantee(result_adr != NULL, "bad register save location");
 
   return (*result_adr);
 }
 
-inline void frame::set_saved_oop_result(RegisterMap* map, oop obj) {
+inline void frame::set_saved_oop_result(const RegisterMap* map, oop obj) {
   oop* result_adr = (oop *)map->location(r0->as_VMReg());
   guarantee(result_adr != NULL, "bad register save location");
 
