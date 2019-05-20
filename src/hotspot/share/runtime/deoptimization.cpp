@@ -2429,7 +2429,7 @@ void JVMTIEscapeBarrier::set_objs_are_deoptimized(JavaThread* thread, intptr_t* 
 }
 
 bool JVMTIEscapeBarrier::deoptimize_objects(compiledVFrame* cvf) {
-  if (!should_deopt()) return true;
+  if (!barrier_active()) return true;
   frame f = cvf->fr();
   return deoptimize_objects(deoptee_thread(), &f, cvf->register_map());
 }
@@ -2439,7 +2439,7 @@ bool JVMTIEscapeBarrier::deoptimize_objects(compiledVFrame* cvf) {
 // entry frame is reached, because thread local objects passed as arguments might escape from callee
 // frames within the given depth.
 bool JVMTIEscapeBarrier::deoptimize_objects(int depth) {
-  if (should_deopt() && deoptee_thread()->has_last_Java_frame()) {
+  if (barrier_active() && deoptee_thread()->has_last_Java_frame()) {
     ResourceMark rm;
     HandleMark   hm;
     RegisterMap  reg_map(deoptee_thread());
@@ -2468,7 +2468,7 @@ bool JVMTIEscapeBarrier::deoptimize_objects(int depth) {
 }
 
 bool JVMTIEscapeBarrier::deoptimize_objects(intptr_t* fr_id) {
-  if (!should_deopt()) return true;
+  if (!barrier_active()) return true;
   // Compute frame and register map based on thread and sp.
   RegisterMap reg_map(deoptee_thread());
   frame fr = deoptee_thread()->last_frame();
@@ -2480,7 +2480,7 @@ bool JVMTIEscapeBarrier::deoptimize_objects(intptr_t* fr_id) {
 
 
 bool JVMTIEscapeBarrier::deoptimize_objects_all_threads() {
-  if (!should_deopt()) return true;
+  if (!barrier_active()) return true;
   ResourceMark rm(calling_thread());
   for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
     if (!jt->has_last_Java_frame()) continue;
@@ -2516,7 +2516,7 @@ void JVMTIEscapeBarrier::set_deoptimizing_objects_for_all_threads(bool v) {
 void JVMTIEscapeBarrier::sync_and_suspend_one() {
   assert(_calling_thread != NULL, "calling thread must not be NULL");
   assert(_deoptee_thread != NULL, "deoptee thread must not be NULL");
-  assert(should_deopt(), "should not call");
+  assert(barrier_active(), "should not call");
 
   // Sync with other threads that might be doing deoptimizations
   {
@@ -2570,7 +2570,7 @@ class VM_ThreadSuspendAllForObjDeopt : public VM_Operation {
 };
 
 void JVMTIEscapeBarrier::sync_and_suspend_all() {
-  assert(should_deopt(), "should not call");
+  assert(barrier_active(), "should not call");
   assert(_calling_thread != NULL, "calling thread must not be NULL");
   assert(all_threads(), "sanity");
 
@@ -2608,7 +2608,7 @@ void JVMTIEscapeBarrier::sync_and_suspend_all() {
 }
 
 void JVMTIEscapeBarrier::resume_one() {
-  assert(should_deopt(), "should not call");
+  assert(barrier_active(), "should not call");
   assert(!all_threads(), "use resume_all()");
   MutexLocker ml(JvmtiObjReallocRelock_lock);
   if (self_deopt()) {
@@ -2621,7 +2621,7 @@ void JVMTIEscapeBarrier::resume_one() {
 }
 
 void JVMTIEscapeBarrier::resume_all() {
-  assert(should_deopt(), "should not call");
+  assert(barrier_active(), "should not call");
   assert(all_threads(), "use resume_one()");
   {
     MutexLocker l1(Threads_lock);
@@ -2643,7 +2643,7 @@ void JVMTIEscapeBarrier::resume_all() {
 // Deoptimized objects are kept as JVMTI deferred updates until the compiled frame is replaced with interpreter frames.
 // Returns false iff at least one reallocation failed.
 bool JVMTIEscapeBarrier::deoptimize_objects(JavaThread* deoptee, frame* fr, const RegisterMap *reg_map) {
-  if (!should_deopt()) return true;
+  if (!barrier_active()) return true;
 
   JavaThread* ct = calling_thread();
   bool realloc_failures = false;
