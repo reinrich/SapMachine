@@ -2434,30 +2434,35 @@ bool JVMTIEscapeBarrier::deoptimize_objects(compiledVFrame* cvf) {
   return deoptimize_objects(deoptee_thread(), &f, cvf->register_map());
 }
 
+// Deoptimize frames with non escaping objects. Deoptimize objects with optimizations based on
+// escape analysis.  Do it for all frames within the given depth and continue from there until the
+// entry frame is reached, because thread local objects passed as arguments might escape from callee
+// frames within the given depth.
 bool JVMTIEscapeBarrier::deoptimize_objects(int depth) {
-  if (!should_deopt()) return true;
-  ResourceMark rm;
-  HandleMark   hm;
-  RegisterMap  reg_map(deoptee_thread());
-  vframe* vf = deoptee_thread()->last_java_vframe(&reg_map);
-  int cur_depth = 0;
-  while (vf != NULL && ((cur_depth <= depth) || !vf->is_entry_frame())) {
-    if (vf->is_compiled_frame()) {
-      compiledVFrame* cvf = compiledVFrame::cast(vf);
-      // Deoptimize objects
-      if (cvf->not_global_escape_in_scope() && !deoptimize_objects(cvf)) {
-        // reallocation of scalar replaced objects failed, because heap is exhausted
-        return false;
+  if (should_deopt() && deoptee_thread()->has_last_Java_frame()) {
+    ResourceMark rm;
+    HandleMark   hm;
+    RegisterMap  reg_map(deoptee_thread());
+    vframe* vf = deoptee_thread()->last_java_vframe(&reg_map);
+    int cur_depth = 0;
+    while (vf != NULL && ((cur_depth <= depth) || !vf->is_entry_frame())) {
+      if (vf->is_compiled_frame()) {
+        compiledVFrame* cvf = compiledVFrame::cast(vf);
+        // Deoptimize frame and local objects if any exist
+        if (cvf->not_global_escape_in_scope() && !deoptimize_objects(cvf)) {
+          // reallocation of scalar replaced objects failed, because heap is exhausted
+          return false;
+        }
       }
-    }
 
-    // move to next physical frame
-    while(!vf->is_top()) {
+      // move to next physical frame
+      while(!vf->is_top()) {
+        cur_depth++;
+        vf = vf->sender();
+      }
       cur_depth++;
       vf = vf->sender();
     }
-    cur_depth++;
-    vf = vf->sender();
   }
   return true;
 }
@@ -2632,10 +2637,11 @@ void JVMTIEscapeBarrier::resume_all() {
   JvmtiObjReallocRelock_lock->notify_all();
 }
 
-// Deoptimize objects, i.e. reallocate scalar replaced objects on the heap and relock objects if
-// locking has been eliminated. The holding compiled frame is marked for later deoptimization.
-// Until then the deoptimized objects are kept as deferred updates.
-// Returns false iff at least one reallocation failed
+// Deoptimize the given frame and deoptimize objects with optimizations based on escape analysis,
+// i.e. reallocate scalar replaced objects on the heap and relock objects if locking has been
+// eliminated.
+// Deoptimized objects are kept as JVMTI deferred updates until the compiled frame is replaced with interpreter frames.
+// Returns false iff at least one reallocation failed.
 bool JVMTIEscapeBarrier::deoptimize_objects(JavaThread* deoptee, frame* fr, const RegisterMap *reg_map) {
   if (!should_deopt()) return true;
 

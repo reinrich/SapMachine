@@ -468,8 +468,9 @@ JVMCI_ONLY(public:)
 };
 
 // JVMTIEscapeBarriers should be put on execution paths, where JVMTI agents can access object
-// references helt by java threads. They trigger rollback of jit compiler optimizations based on
-// escape analysis (e.g. scalar replacement and lock elimination).
+// references helt by java threads.
+// They provide means to revert optimizations based on escape analysis just before local references
+// escape through JVMTI in a well synchronized manner.
 class JVMTIEscapeBarrier : StackObj {
   static bool _deoptimizing_objects_for_all_threads;
   static bool _self_deoptimization_in_progress;
@@ -484,7 +485,7 @@ class JVMTIEscapeBarrier : StackObj {
   void resume_one();
   void resume_all();
 
-  // Relallocates and relocks objects in the given compiled frame to make them accessible through JVMTI
+  // Deoptimize the given frame and deoptimize objects with optimizations based on escape analysis.
   bool deoptimize_objects(JavaThread* deoptee, frame* fr, const RegisterMap *reg_map);
 #endif // COMPILER2_OR_JVMCI
 
@@ -508,7 +509,8 @@ public:
   // Remember that objects were reallocated and relocked for the compiled frame with the given id
   static void set_objs_are_deoptimized(JavaThread* thread, intptr_t* fr_id);
 
-  // Methods to reallocate and relock objects in one or all compiled frames.
+  // Deoptimize objects, i.e. reallocate and relock them.
+  // Target frames will be deoptimized iff local objects are in the current scope.
   // The methods return false iff at least one reallocation failed.
   bool deoptimize_objects(compiledVFrame* cvf)                 NOT_COMPILER2_OR_JVMCI_RETURN_(true);
   bool deoptimize_objects(intptr_t* fr_id)                     NOT_COMPILER2_OR_JVMCI_RETURN_(true);
