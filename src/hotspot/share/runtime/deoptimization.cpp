@@ -193,8 +193,8 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
           // It is not guaranteed that we can get such information here only
           // by analyzing bytecode in deoptimized frames. This is why this flag
           // is set during method compilation (see Compile::Process_OopMap_Node()).
-          // If the previous frame was popped, if we are dispatching an exception
-          // or if we are not deoptimizing the frame, we don't have an oop result.
+          // If the previous frame was popped or if we are dispatching an exception,
+          // we don't have an oop result.
           bool save_oop_result = chunk->at(0)->scope()->return_oop() && !thread->popframe_forcing_deopt_reexecution() && (exec_mode == Unpack_deopt);
           Handle return_value;
           if (save_oop_result) {
@@ -211,7 +211,7 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
           }
           JRT_BLOCK
             realloc_failures = realloc_objects(thread, &deoptee, objects, THREAD);
-          JRT_BLOCK_END
+          JRT_END
           if (save_oop_result) {
             // Restore result.
             deoptee.set_saved_oop_result(map, return_value());
@@ -259,10 +259,12 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
                   first = false;
                   tty->print_cr("RELOCK OBJECTS in thread " INTPTR_FORMAT, p2i(thread));
                 }
-                ObjectMonitor* monitor = deoptee_thread->current_waiting_monitor();
-                if (monitor != NULL && (oop)monitor->object() == mi->owner()) {
-                  tty->print_cr("     object <" INTPTR_FORMAT "> DEFERRED relocking after wait", p2i(mi->owner()));
-                  continue;
+                if (exec_mode == Deoptimization::Unpack_none) {
+                  ObjectMonitor* monitor = deoptee_thread->current_waiting_monitor();
+                  if (monitor != NULL && (oop)monitor->object() == mi->owner()) {
+                    tty->print_cr("     object <" INTPTR_FORMAT "> DEFERRED relocking after wait", p2i(mi->owner()));
+                    continue;
+                  }
                 }
                 if (mi->owner_is_scalar_replaced()) {
                   Klass* k = java_lang_Class::as_Klass(mi->owner_klass());
