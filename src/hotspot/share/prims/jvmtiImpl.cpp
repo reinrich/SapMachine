@@ -534,7 +534,7 @@ VM_GetOrSetLocal::VM_GetOrSetLocal(JavaThread* thread, jint depth, jint index, B
   , _type(type)
   , _jvf(NULL)
   , _set(false)
-  , _eb(JavaThread::current(), thread, false)
+  , _eb(NULL, NULL, false) // no references escape
   , _result(JVMTI_ERROR_NONE)
 {
 }

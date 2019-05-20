@@ -1327,8 +1327,8 @@ JvmtiEnvBase::check_top_frame(JavaThread* current_thread, JavaThread* java_threa
   ResourceMark rm(current_thread);
 
   if (java_thread->frames_to_pop_failed_realloc() > 0) {
-    // VM is in the process of popping the top frame, because it
-    // references scalar replaced objects which could not be reallocated on the heap.
+    // VM is in the process of popping the top frame, because it has scalar replaced objects
+    // which could not be reallocated on the heap.
     // Return JVMTI_ERROR_OUT_OF_MEMORY to avoid interfering with the VM.
     return JVMTI_ERROR_OUT_OF_MEMORY;
   }
