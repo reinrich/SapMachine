@@ -738,6 +738,7 @@ static bool can_be_deoptimized(vframe* vf) {
   return (vf->is_compiled_frame() && vf->fr().can_be_deoptimized());
 }
 
+// Revert optimizations based on escape analysis if this is an access to a local object
 bool VM_GetOrSetLocal::deoptimize_objects(javaVFrame* jvf) {
 #if COMPILER2_OR_JVMCI
   if (NOT_JVMCI(DoEscapeAnalysis &&) _type == T_OBJECT) {
