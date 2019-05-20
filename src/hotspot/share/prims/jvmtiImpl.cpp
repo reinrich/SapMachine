@@ -741,6 +741,11 @@ static bool can_be_deoptimized(vframe* vf) {
 bool VM_GetOrSetLocal::deoptimize_objects(javaVFrame* jvf) {
 #if COMPILER2_OR_JVMCI
   if (NOT_JVMCI(DoEscapeAnalysis &&) _type == T_OBJECT) {
+    if (_depth < _thread->frames_to_pop_failed_realloc()) {
+      // cannot access frame with failed reallocations
+      _result = JVMTI_ERROR_OUT_OF_MEMORY;
+      return false;
+    }
     if (can_be_deoptimized(jvf)) {
       compiledVFrame* cf = compiledVFrame::cast(jvf);
       if (cf->not_global_escape_in_scope() && !_eb.deoptimize_objects(cf)) {
@@ -748,14 +753,10 @@ bool VM_GetOrSetLocal::deoptimize_objects(javaVFrame* jvf) {
         _result = JVMTI_ERROR_OUT_OF_MEMORY;
         return false;
       }
-    } else if (_depth < _thread->frames_to_pop_failed_realloc()) {
-      // cannot access frame with failed reallocations
-      _result = JVMTI_ERROR_OUT_OF_MEMORY;
-      return false;
     }
 
-    // With this access the object could escape the thread changing its escape state from ArgEscape to GlobalEscape,
-    // so we must deoptimize callers which could have optimized on the escape state.
+    // With this access the object could escape the thread changing its escape state from ArgEscape,
+    // to GlobalEscape so we must deoptimize callers which could have optimized on the escape state.
     vframe* vf = jvf;
     do {
       // move to next physical frame

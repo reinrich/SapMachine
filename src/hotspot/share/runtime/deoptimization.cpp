@@ -2435,7 +2435,7 @@ bool JVMTIEscapeBarrier::deoptimize_objects(compiledVFrame* cvf) {
 }
 
 // Deoptimize frames with non escaping objects. Deoptimize objects with optimizations based on
-// escape analysis.  Do it for all frames within the given depth and continue from there until the
+// escape analysis. Do it for all frames within the given depth and continue from there until the
 // entry frame is reached, because thread local objects passed as arguments might escape from callee
 // frames within the given depth.
 bool JVMTIEscapeBarrier::deoptimize_objects(int depth) {
@@ -2448,8 +2448,10 @@ bool JVMTIEscapeBarrier::deoptimize_objects(int depth) {
     while (vf != NULL && ((cur_depth <= depth) || !vf->is_entry_frame())) {
       if (vf->is_compiled_frame()) {
         compiledVFrame* cvf = compiledVFrame::cast(vf);
-        // Deoptimize frame and local objects if any exist
-        if (cvf->not_global_escape_in_scope() && !deoptimize_objects(cvf)) {
+        // Deoptimize frame and local objects if any exist.
+        // If cvf is deeper than depth, then we must only deoptimize if local objects are passed as args.
+        bool should_deopt = cur_depth <= depth ? cvf->not_global_escape_in_scope() : cvf->arg_escape();
+        if (should_deopt && !deoptimize_objects(cvf)) {
           // reallocation of scalar replaced objects failed, because heap is exhausted
           return false;
         }
