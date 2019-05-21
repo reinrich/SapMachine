@@ -165,17 +165,17 @@ JRT_END
 bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compiledVFrame*>* chunk, bool& realloc_failures, int exec_mode) {
   bool deoptimized_objects = false;
 
-  frame deoptee = chunk->at(0)->fr();
-  JavaThread* deoptee_thread = chunk->at(0)->thread();
-  const RegisterMap* map = chunk->at(0)->register_map();
+  NOT_JVMCI(if (DoEscapeAnalysis || EliminateNestedLocks))
+  {
+    frame deoptee = chunk->at(0)->fr();
+    JavaThread* deoptee_thread = chunk->at(0)->thread();
+    const RegisterMap* map = chunk->at(0)->register_map();
 
-  assert(!JVMTIEscapeBarrier::objs_are_deoptimized(deoptee_thread, deoptee.id()), "must relock just once");
-  assert(exec_mode == Unpack_none || (deoptee_thread == thread), "a frame can only be deoptimized by the owner thread");
+    assert(!JVMTIEscapeBarrier::objs_are_deoptimized(deoptee_thread, deoptee.id()), "must relock just once");
+    assert(exec_mode == Unpack_none || (deoptee_thread == thread), "a frame can only be deoptimized by the owner thread");
 
-#if !INCLUDE_JVMCI
-  if (DoEscapeAnalysis || EliminateNestedLocks) {
-    if (EliminateAllocations) {
-#endif // INCLUDE_JVMCI
+    NOT_JVMCI(if (EliminateAllocations))
+    {
       assert (chunk->at(0)->scope() != NULL,"expect only compiled java frames");
       GrowableArray<ScopeValue*>* objects = chunk->at(0)->scope()->objects();
 
@@ -235,10 +235,9 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
         }
 #endif
       }
-#if !INCLUDE_JVMCI
     }
-    if (EliminateLocks) {
-#endif // INCLUDE_JVMCI
+    NOT_JVMCI(if (EliminateLocks))
+    {
 #ifndef PRODUCT
       bool first = true;
 #endif
@@ -278,10 +277,8 @@ bool Deoptimization::deoptimize_objects(JavaThread* thread, GrowableArray<compil
 #endif // !PRODUCT
         }
       }
-#if !INCLUDE_JVMCI
     }
   }
-#endif // INCLUDE_JVMCI
   return deoptimized_objects;
 }
 #endif // COMPILER2_OR_JVMCI
@@ -331,23 +328,16 @@ Deoptimization::UnrollBlock* Deoptimization::fetch_unroll_info_helper(JavaThread
 #if COMPILER2_OR_JVMCI
   // Reallocate the non-escaping objects and restore their fields. Then
   // relock objects if synchronization on them was eliminated.
-#ifndef INCLUDE_JVMCI
-  if (DoEscapeAnalysis || EliminateNestedLocks) {
-#endif // INCLUDE_JVMCI
-
-    if (!JVMTIEscapeBarrier::objs_are_deoptimized(thread, deoptee.id())) {
-      // objects are not yet deoptimized, do it now
-      deoptimize_objects(thread, chunk, realloc_failures, exec_mode);
-    } else {
-      // objects have been deoptimized already for JVMTI access
-      if (TraceDeoptimization) {
-        ttyLocker ttyl;
-        tty->print_cr("ALREADY DEOPTIMIZED OBJECTS for thread " INTPTR_FORMAT, p2i(thread));
-      }
+  if (!JVMTIEscapeBarrier::objs_are_deoptimized(thread, deoptee.id())) {
+    // objects are not yet deoptimized, do it now
+    deoptimize_objects(thread, chunk, realloc_failures, exec_mode);
+  } else {
+    // objects have been deoptimized already for JVMTI access
+    if (TraceDeoptimization) {
+      ttyLocker ttyl;
+      tty->print_cr("ALREADY DEOPTIMIZED OBJECTS for thread " INTPTR_FORMAT, p2i(thread));
     }
-#ifndef INCLUDE_JVMCI
   }
-#endif // INCLUDE_JVMCI
 #endif // COMPILER2_OR_JVMCI
 
   ScopeDesc* trap_scope = chunk->at(0)->scope();
