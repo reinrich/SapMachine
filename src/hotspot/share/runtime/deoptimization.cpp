@@ -1154,7 +1154,6 @@ bool Deoptimization::relock_objects(JavaThread* thread, GrowableArray<MonitorInf
       if (!mon_info->owner_is_scalar_replaced()) {
         Handle obj(thread, mon_info->owner());
         markOop mark = obj->mark();
-        BasicLock* lock = mon_info->lock();
         if (UseBiasedLocking && mark->has_bias_pattern()) {
           // New allocated objects may have the mark set to anonymously biased.
           // Also the deoptimized method may called methods with synchronization
@@ -1177,12 +1176,13 @@ bool Deoptimization::relock_objects(JavaThread* thread, GrowableArray<MonitorInf
             // defer relocking if the deoptee thread is currently waiting for obj
             ObjectMonitor* waiting_monitor = deoptee_thread->current_waiting_monitor();
             if (waiting_monitor != NULL && (oop)waiting_monitor->object() == obj()) {
-              lock->set_displaced_header(markOopDesc::unused_mark());
+              mon_info->lock()->set_displaced_header(markOopDesc::unused_mark());
               deoptee_thread->inc_relock_count_after_wait();
               continue;
             }
           }
         }
+        BasicLock* lock = mon_info->lock();
         ObjectSynchronizer::slow_enter(obj, lock, deoptee_thread);
         assert(mon_info->owner()->is_locked(), "object must be locked now");
       }
