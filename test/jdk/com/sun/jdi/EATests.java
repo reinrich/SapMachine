@@ -786,7 +786,7 @@ abstract class EATestCaseBaseTarget extends EATestCaseBaseShared implements Runn
         }
     }
 
-    public long dontline_endlessLoop() {
+    public long dontinline_endlessLoop() {
         long cs = checkSum;
         doLoop = true;
         while (loopCount-- > 0 && doLoop) {
@@ -1962,7 +1962,7 @@ class EAGetOwnedMonitorsTarget extends EATestCaseBaseTarget {
     public void dontinline_testMethod() {
         PointXY l1 = new PointXY(4, 2);
         synchronized (l1) {
-            dontline_endlessLoop();
+            dontinline_endlessLoop();
         }
     }
 
@@ -2011,7 +2011,7 @@ class EAEntryCountTarget extends EATestCaseBaseTarget {
 
     public void inline_testMethod2(PointXY l1) {
         synchronized (l1) {
-            dontline_endlessLoop();
+            dontinline_endlessLoop();
         }
     }
 
@@ -2521,7 +2521,7 @@ class EAGetInstancesOfReferenceTypeTarget extends EATestCaseBaseTarget {
         LocalPointXY p1 = new LocalPointXY(4, 2);
         LocalPointXY p2 = new LocalPointXY(5, 3);
         LocalPointXY p3 = new LocalPointXY(6, 4);
-        dontline_endlessLoop();
+        dontinline_endlessLoop();
         iResult = p1.x+p1.y + p2.x+p2.y + p3.x+p3.y;
     }
 
