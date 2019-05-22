@@ -2628,7 +2628,6 @@ void JVMTIEscapeBarrier::resume_all() {
   {
     MutexLocker l1(Threads_lock);
     set_deoptimizing_objects_for_all_threads(false);
-    Threads_lock->notify_all();
   }
   MutexLocker l2(JvmtiObjReallocRelock_lock);
   assert(_self_deoptimization_in_progress, "incorrect synchronization");
