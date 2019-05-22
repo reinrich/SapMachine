@@ -486,7 +486,7 @@ class JVMTIEscapeBarrier : StackObj {
   void resume_all();
 
   // Deoptimize the given frame and deoptimize objects with optimizations based on escape analysis.
-  bool deoptimize_objects(JavaThread* deoptee, frame* fr, const RegisterMap *reg_map);
+  bool deoptimize_objects(JavaThread* deoptee, frame fr, const RegisterMap *reg_map);
 #endif // COMPILER2_OR_JVMCI
 
 public:

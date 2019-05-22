@@ -2421,9 +2421,7 @@ void JVMTIEscapeBarrier::set_objs_are_deoptimized(JavaThread* thread, intptr_t* 
 }
 
 bool JVMTIEscapeBarrier::deoptimize_objects(compiledVFrame* cvf) {
-  if (!barrier_active()) return true;
-  frame f = cvf->fr();
-  return deoptimize_objects(deoptee_thread(), &f, cvf->register_map());
+  return !barrier_active() || deoptimize_objects(deoptee_thread(), cvf->fr(), cvf->register_map());
 }
 
 // Deoptimize frames with non escaping objects. Deoptimize objects with optimizations based on
@@ -2469,7 +2467,7 @@ bool JVMTIEscapeBarrier::deoptimize_objects(intptr_t* fr_id) {
   while (fr.id() != fr_id) {
     fr = fr.sender(&reg_map);
   }
-  return deoptimize_objects(deoptee_thread(), &fr, &reg_map);
+  return deoptimize_objects(deoptee_thread(), fr, &reg_map);
 }
 
 
@@ -2477,14 +2475,24 @@ bool JVMTIEscapeBarrier::deoptimize_objects_all_threads() {
   if (!barrier_active()) return true;
   ResourceMark rm(calling_thread());
   for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
-    if (!jt->has_last_Java_frame()) continue;
-    assert(jt->frame_anchor()->walkable(),
-           "The stack of JavaThread " PTR_FORMAT " is not walkable. Thread state is %d",
-           p2i(jt), jt->thread_state());
-    RegisterMap reg_map(jt);
-    for (frame fr = jt->last_frame(); !fr.is_first_frame(); fr = fr.sender(&reg_map)) {
-      if (fr.can_be_deoptimized() && !deoptimize_objects(jt, &fr, &reg_map)) {
-        return false; // reallocation failure
+    if (jt->has_last_Java_frame()) {
+      RegisterMap reg_map(jt);
+      vframe* vf = jt->last_java_vframe(&reg_map);
+      assert(jt->frame_anchor()->walkable(),
+             "The stack of JavaThread " PTR_FORMAT " is not walkable. Thread state is %d",
+             p2i(jt), jt->thread_state());
+      while (vf != NULL) {
+        if (vf->is_compiled_frame()) {
+          compiledVFrame* cvf = compiledVFrame::cast(vf);
+          if (cvf->not_global_escape_in_scope() && !deoptimize_objects(jt, cvf->fr(), cvf->register_map())) {
+            return false; // reallocation failure
+          }
+        }
+        // move to next physical frame
+        while(!vf->is_top()) {
+          vf = vf->sender();
+        }
+        vf = vf->sender();
       }
     }
   }
@@ -2636,30 +2644,30 @@ void JVMTIEscapeBarrier::resume_all() {
 // eliminated.
 // Deoptimized objects are kept as JVMTI deferred updates until the compiled frame is replaced with interpreter frames.
 // Returns false iff at least one reallocation failed.
-bool JVMTIEscapeBarrier::deoptimize_objects(JavaThread* deoptee, frame* fr, const RegisterMap *reg_map) {
+bool JVMTIEscapeBarrier::deoptimize_objects(JavaThread* deoptee, frame fr, const RegisterMap *reg_map) {
   if (!barrier_active()) return true;
 
   JavaThread* ct = calling_thread();
   bool realloc_failures = false;
 
   assert(!Thread::current()->is_VM_thread(), "the VM thread cannot reallocate stack objects to the Java heap");
-  assert(fr->is_compiled_frame(), "only compiled frames can contain stack allocated objects");
+  assert(fr.is_compiled_frame(), "only compiled frames can contain stack allocated objects");
   assert(reg_map->update_map(), "e.g. for values in callee saved registers");
 
-  if (!objs_are_deoptimized(deoptee, fr->id())) {
+  if (!objs_are_deoptimized(deoptee, fr.id())) {
     // Execution must not continue in the compiled method, so we deoptimize the frame.
     // As a side effect all locking biases will be removed which makes relocking
     // of eliminated nested locks easier.
-    compiledVFrame* last_cvf = compiledVFrame::cast(vframe::new_vframe(fr, reg_map, deoptee));
-    if (!fr->is_deoptimized_frame()) {
-      Deoptimization::deoptimize_frame(deoptee, fr->id());
+    compiledVFrame* last_cvf = compiledVFrame::cast(vframe::new_vframe(&fr, reg_map, deoptee));
+    if (!fr.is_deoptimized_frame()) {
+      Deoptimization::deoptimize_frame(deoptee, fr.id());
 
       // the frame fr is stale after the deoptimization, we have to fetch it again
       StackFrameStream fst(deoptee);
-      while (fst.current()->id() != fr->id() && !fst.is_done()) {
+      while (fst.current()->id() != fr.id() && !fst.is_done()) {
         fst.next();
       }
-      assert(fst.current()->id() == fr->id(), "frame not found after deoptimization");
+      assert(fst.current()->id() == fr.id(), "frame not found after deoptimization");
       last_cvf = compiledVFrame::cast(vframe::new_vframe(fst.current(), fst.register_map(), deoptee));
     }
 
@@ -2744,7 +2752,7 @@ bool JVMTIEscapeBarrier::deoptimize_objects(JavaThread* deoptee, frame* fr, cons
           }
         }
       }
-      set_objs_are_deoptimized(deoptee, fr->id());
+      set_objs_are_deoptimized(deoptee, fr.id());
     }
   }
   return !realloc_failures;
