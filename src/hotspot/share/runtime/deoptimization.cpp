@@ -2649,7 +2649,6 @@ bool JVMTIEscapeBarrier::deoptimize_objects(JavaThread* deoptee, frame fr, const
   JavaThread* ct = calling_thread();
   bool realloc_failures = false;
 
-  assert(!Thread::current()->is_VM_thread(), "the VM thread cannot reallocate stack objects to the Java heap");
   assert(fr.is_compiled_frame(), "only compiled frames can contain stack allocated objects");
   assert(reg_map->update_map(), "e.g. for values in callee saved registers");
 
