@@ -159,7 +159,7 @@ class Deoptimization : AllStatic {
   static void revoke_biases_of_monitors(JavaThread* thread, frame fr, RegisterMap* map);
 
 #if COMPILER2_OR_JVMCI
-  // Deoptimize objects, that is reallocate and relock them.
+  // Deoptimize objects, that is reallocate and relock them. Deoptimize holding frame.
   static bool deoptimize_objects(JavaThread* thread, GrowableArray<compiledVFrame*>* chunk, bool& realloc_failures, int exec_mode);
 
 JVMCI_ONLY(public:)
@@ -469,8 +469,8 @@ JVMCI_ONLY(public:)
 
 // JVMTIEscapeBarriers should be put on execution paths, where JVMTI agents can access object
 // references helt by java threads.
-// They provide means to revert optimizations based on escape analysis just before local references
-// escape through JVMTI in a well synchronized manner.
+// They provide means to revert optimizations based on escape analysis in a well synchronized manner
+// just before local references escape through JVMTI.
 class JVMTIEscapeBarrier : StackObj {
   static bool _deoptimizing_objects_for_all_threads;
   static bool _self_deoptimization_in_progress;
@@ -509,12 +509,12 @@ public:
   // Remember that objects were reallocated and relocked for the compiled frame with the given id
   static void set_objs_are_deoptimized(JavaThread* thread, intptr_t* fr_id);
 
-  // Deoptimize objects, i.e. reallocate and relock them.
-  // Target frames will be deoptimized iff local objects are in the current scope.
+  // Deoptimize objects, i.e. reallocate and relock them. The target frames are deoptimized.
   // The methods return false iff at least one reallocation failed.
   bool deoptimize_objects(compiledVFrame* cvf)                 NOT_COMPILER2_OR_JVMCI_RETURN_(true);
   bool deoptimize_objects(intptr_t* fr_id)                     NOT_COMPILER2_OR_JVMCI_RETURN_(true);
   bool deoptimize_objects(int depth)                           NOT_COMPILER2_OR_JVMCI_RETURN_(true);
+  // Find and deoptimize non escaping objects and the holding frames on all stacks.
   bool deoptimize_objects_all_threads()                        NOT_COMPILER2_OR_JVMCI_RETURN_(true);
 
   // Used to prevent that new threads pop up, until the triggering operation has completed.
@@ -532,7 +532,7 @@ public:
   }
 
 
-  bool all_threads()    const { return _deoptee_thread == NULL; }            // Should revert deoptimization in all threads.
+  bool all_threads()    const { return _deoptee_thread == NULL; }            // Should revert optimizations for all threads.
   bool self_deopt()     const { return _calling_thread == _deoptee_thread; } // Current thread deoptimizes its own objects.
   bool barrier_active() const { return _barrier_active; }                    // Inactive barriers are created if no local objects can escape.
 
