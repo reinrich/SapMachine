@@ -472,14 +472,14 @@ JVMCI_ONLY(public:)
 // They provide means to revert optimizations based on escape analysis in a well synchronized manner
 // just before local references escape through JVMTI.
 class JVMTIEscapeBarrier : StackObj {
-  static bool _deoptimizing_objects_for_all_threads;
-  static bool _self_deoptimization_in_progress;
-
+#if COMPILER2_OR_JVMCI
   JavaThread* const _calling_thread;
   JavaThread* const _deoptee_thread;
   bool        const _barrier_active;
 
-#if COMPILER2_OR_JVMCI
+  static bool _deoptimizing_objects_for_all_threads;
+  static bool _self_deoptimization_in_progress;
+
   void sync_and_suspend_one();
   void sync_and_suspend_all();
   void resume_one();
@@ -487,27 +487,26 @@ class JVMTIEscapeBarrier : StackObj {
 
   // Deoptimize the given frame and deoptimize objects with optimizations based on escape analysis.
   bool deoptimize_objects(JavaThread* deoptee, frame fr, const RegisterMap *reg_map);
-#endif // COMPILER2_OR_JVMCI
 
 public:
   // Revert ea based optimizations for given deoptee thread
   JVMTIEscapeBarrier(JavaThread* calling_thread, JavaThread* deoptee_thread, bool barrier_active)
     : _calling_thread(calling_thread), _deoptee_thread(deoptee_thread), _barrier_active(barrier_active)
   {
-    COMPILER2_OR_JVMCI_PRESENT(if (_barrier_active) sync_and_suspend_one());
+    if (_barrier_active) sync_and_suspend_one();
   }
 
   // Revert ea based optimizations for all java threads
   JVMTIEscapeBarrier(JavaThread* calling_thread, bool barrier_active)
     : _calling_thread(calling_thread), _deoptee_thread(NULL), _barrier_active(barrier_active)
   {
-    COMPILER2_OR_JVMCI_PRESENT(if (_barrier_active) sync_and_suspend_all());
+    if (_barrier_active) sync_and_suspend_all();
   }
-
-  // Returns true iff objects were reallocated and relocked because of access through JVMTI
-  static bool objs_are_deoptimized(JavaThread* thread, intptr_t* fr_id);
-  // Remember that objects were reallocated and relocked for the compiled frame with the given id
-  static void set_objs_are_deoptimized(JavaThread* thread, intptr_t* fr_id);
+#else
+public:
+  JVMTIEscapeBarrier(JavaThread* calling_thread, JavaThread* deoptee_thread, bool barrier_active) { }
+  JVMTIEscapeBarrier(JavaThread* calling_thread, bool barrier_active) { }
+#endif // COMPILER2_OR_JVMCI
 
   // Deoptimize objects, i.e. reallocate and relock them. The target frames are deoptimized.
   // The methods return false iff at least one reallocation failed.
@@ -522,6 +521,11 @@ public:
   static void set_deoptimizing_objects_for_all_threads(bool v) NOT_COMPILER2_OR_JVMCI_RETURN;
 
 #if COMPILER2_OR_JVMCI
+  // Returns true iff objects were reallocated and relocked because of access through JVMTI
+  static bool objs_are_deoptimized(JavaThread* thread, intptr_t* fr_id);
+  // Remember that objects were reallocated and relocked for the compiled frame with the given id
+  static void set_objs_are_deoptimized(JavaThread* thread, intptr_t* fr_id);
+
   ~JVMTIEscapeBarrier() {
     if (!barrier_active()) return;
     if (all_threads()) {
