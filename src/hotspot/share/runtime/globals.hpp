@@ -489,11 +489,12 @@ define_pd_global(uint64_t,MaxRAM,                    1ULL*G);
           "Trace stack (no print) at every exit from the runtime system")   \
                                                                             \
   develop(int, DeoptimizeObjectsALot, 0,                                    \
-          "Revert optimizations based on escape analysis. "                 \
+          "Revert optimizations based on escape analysis at a frequency "   \
+          "given with DeoptimizeObjectsALotInterval=n. "                    \
           "0: switched off. "                                               \
-          "1: At every exit from the runtime system "                       \
+          "1: At every nth exit from the runtime system "                   \
           "2: Starts a dedicated thread that periodically triggers the "    \
-          "deoptimization" )                                                \
+          "deoptimization n ms. " )                                         \
            range(0,2)                                                       \
                                                                             \
   product(bool, Debugging, false,                                           \
@@ -1660,7 +1661,7 @@ define_pd_global(uint64_t,MaxRAM,                    1ULL*G);
           "Number of exits until ZombieALot kicks in")                      \
                                                                             \
   develop(intx, DeoptimizeObjectsALotInterval,     5,                       \
-          "Number of exits until DeoptimizeObjectsALot kicks in")           \
+          "Interval for DeoptimizeObjectsALot.")                            \
                                                                             \
   diagnostic(uintx, MallocMaxTestWords,     0,                              \
           "If non-zero, maximum number of words that malloc/realloc can "   \
