@@ -52,7 +52,6 @@
   template(Deoptimize)                            \
   template(DeoptimizeFrame)                       \
   template(DeoptimizeAll)                         \
-  template(RegisterDeoptimizedObjects)            \
   template(ZombieAll)                             \
   template(Verify)                                \
   template(PrintJNI)                              \
