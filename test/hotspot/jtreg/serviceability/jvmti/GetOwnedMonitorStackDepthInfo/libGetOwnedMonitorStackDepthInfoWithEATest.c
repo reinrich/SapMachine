@@ -134,7 +134,7 @@ Java_GetOwnedMonitorStackDepthInfoWithEATest_getOwnedMonitorStackDepthInfo(JNIEn
     jvmtiThreadInfo threadInfo;
     jint monitorCount;
     jvmtiMonitorStackDepthInfo* stackDepthInfo;
-
+    jint* depthsPtr;
     jint idx = 0;
 
     err = (*jvmti)->GetThreadInfo(jvmti, targetThread, &threadInfo);
@@ -153,8 +153,7 @@ Java_GetOwnedMonitorStackDepthInfoWithEATest_getOwnedMonitorStackDepthInfo(JNIEn
 
     printf("getOwnedMonitorsFor: %s owns %d monitor(s)\n", threadInfo.name, monitorCount);
 
-    jboolean isCopy;
-    jint* depthsPtr = (*env)->GetIntArrayElements(env, depths, &isCopy);
+    depthsPtr = (*env)->GetIntArrayElements(env, depths, NULL);
     for (idx = 0; idx < monitorCount; idx++) {
       (*env)->SetObjectArrayElement(env, ownedMonitors, idx, stackDepthInfo[idx].monitor);
       depthsPtr[idx] = stackDepthInfo[idx].stack_depth;

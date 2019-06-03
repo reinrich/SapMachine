@@ -24,7 +24,8 @@
 /**
  * @test
  * @bug 7777777
- * @summary (TODO:bugid above) Test JVMTI's GetOwnedMonitorStackDepthInfo with scalar replaced objects and eliminated locks on stack
+ * @comment TODO:change bug id
+ * @summary Test JVMTI's GetOwnedMonitorStackDepthInfo with scalar replaced objects and eliminated locks on stack (optimizations based on escape analysis).
  * @requires (vm.compMode != "Xcomp" & vm.compiler2.enabled)
  * @library /test/lib
  * @compile GetOwnedMonitorStackDepthInfoWithEATest.java
@@ -120,7 +121,16 @@ public class GetOwnedMonitorStackDepthInfoWithEATest {
 
     public static final int COMPILE_THRESHOLD = 20000;
 
-    public static native int getOwnedMonitorStackDepthInfo(Thread t1, Object[] ownedMonitors, int[] depths);
+    /**
+     * Native wrapper arround JVMTI's GetOwnedMonitorStackDepthInfo().
+     * @param t The thread for which the owned monitors information should be retrieved.
+     * @param ownedMonitors Array filled in by the call with the objects associated 
+     *        with the monitors owned by the given thread.
+     * @param depths Per owned monitor the depth of the frame were it was locked.
+     *        Filled in by the call
+     * @return Number of monitors owned by the given thread.
+     */
+    public static native int getOwnedMonitorStackDepthInfo(Thread t, Object[] ownedMonitors, int[] depths);
 
     public static void main(String[] args) throws Exception {
         new GetOwnedMonitorStackDepthInfoWithEATest().runTest();
@@ -134,13 +144,13 @@ public class GetOwnedMonitorStackDepthInfoWithEATest {
     public static abstract class TestCaseBase implements Runnable {
 
         public long checkSum;
+        public boolean doLoop;
         public volatile long loopCount;
         public volatile boolean targetIsInLoop;
 
         public void run() {
             try {
                 msgHL("Executing test case " + getClass().getName());
-                setUp();
                 warmUp();
                 runTest();
             } catch (Exception e) {
@@ -150,12 +160,10 @@ public class GetOwnedMonitorStackDepthInfoWithEATest {
 
         public void warmUp() {
             int callCount = COMPILE_THRESHOLD + 1000;
+            doLoop = true;
             while (callCount-- > 0) {
                 dontinline_testMethod();
             }
-        }
-
-        public void setUp() {
         }
 
         public abstract void runTest() throws Exception;
@@ -163,7 +171,7 @@ public class GetOwnedMonitorStackDepthInfoWithEATest {
 
         public long dontinline_endlessLoop() {
             long cs = checkSum;
-            while (loopCount-- > 0) {
+            while (doLoop && loopCount-- > 0) {
                 targetIsInLoop = true;
                 checkSum += checkSum % ++cs;
             }
@@ -183,7 +191,7 @@ public class GetOwnedMonitorStackDepthInfoWithEATest {
         public void terminateEndlessLoop() throws Exception {
             msg("Terminate endless loop");
             do {
-                loopCount = 0;
+                doLoop = false;
             } while(targetIsInLoop);
         }
 
@@ -202,6 +210,11 @@ public class GetOwnedMonitorStackDepthInfoWithEATest {
         }
     }
 
+    /**
+     * Starts target thread T and then queries monitor information for T using JVMTI's GetOwnedMonitorStackDepthInfo().
+     * The jit compiled method {@link #dontinline_testMethod()} has scalar replaced objects with eliminated (nested) locking in scope when
+     * the monitor information is retrieved.
+     */
     public static class TestCase_1 extends TestCaseBase {
 
         public void runTest() throws Exception {
@@ -229,19 +242,23 @@ public class GetOwnedMonitorStackDepthInfoWithEATest {
         }
 
         public void dontinline_testMethod() {
-            LockCls l1 = new LockCls();
+            LockCls l1 = new LockCls();        // to be scalar replaced
             synchronized (l1) {
                 inlinedTestMethodWithNestedLocking(l1);
             }
         }
 
         public void inlinedTestMethodWithNestedLocking(LockCls l1) {
-            synchronized (l1) {
+            synchronized (l1) {              // nested
                 dontinline_endlessLoop();
             }
         }
     }
 
+    /**
+     * Similar to {@link TestCase_1}. Additionally the target thread T has got eliminated locking
+     * for a synchronized method of a different type {@linkplain LockCls2}.
+     */
     public static class TestCase_2 extends TestCaseBase {
 
         public void runTest() throws Exception {
@@ -286,19 +303,10 @@ public class GetOwnedMonitorStackDepthInfoWithEATest {
         }
 
         public void dontinline_testMethod2() {
+            // Call synchronized method. Receiver of the call will be scalar replaced,
+            // and locking will be eliminated. Here we use a different type.
             new LockCls2().inline_synchronized_testMethod(this);
-        }
-
-        public long dontinline_endlessLoop() {
-            long cs = checkSum;
-            while (loopCount-- > 0) {
-                targetIsInLoop = true;
-                checkSum += checkSum % ++cs;
-            }
-            loopCount = 3;
-            targetIsInLoop = false;
-            return checkSum;
-        }
+        } 
     }
 
     public static class LockCls {
@@ -310,4 +318,3 @@ public class GetOwnedMonitorStackDepthInfoWithEATest {
         }
     }
 }
-
