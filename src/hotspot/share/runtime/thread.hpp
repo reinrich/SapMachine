@@ -1057,7 +1057,7 @@ class JavaThread: public Thread {
   CompiledMethod*       _deopt_nmethod;         // CompiledMethod that is currently being deoptimized
   vframeArray*  _vframe_array_head;              // Holds the heap of the active vframeArrays
   vframeArray*  _vframe_array_last;              // Holds last vFrameArray we popped
-  // Holds updates for compiled frames by JVMTI agents that cannot be performed immediately. They
+  // Holds updates by JVMTI agents for compiled frames that cannot be performed immediately. They
   // will be carried out as soon as possible, which, in most cases, is just before deoptimization of
   // the frame, when control returns to it.
   JvmtiDeferredUpdates* _jvmti_deferred_updates;
@@ -1379,6 +1379,8 @@ class JavaThread: public Thread {
   inline void set_ext_suspended();
   inline void clear_ext_suspended();
 
+  // Synchronize with another thread (most likely a JVMTI agent) that is deoptimizing objects of the
+  // current thread, i.e. reverts optimizations based on escape analysis.
   void wait_for_object_deoptimization();
 
  public:
@@ -2188,6 +2190,7 @@ class CodeCacheSweeperThread : public JavaThread {
 };
 
 #if defined(ASSERT) && COMPILER2_OR_JVMCI
+// See Deoptimization::deoptimize_objects_alot_loop()
 class DeoptimizeObjectsALotThread : public JavaThread {
  public:
   DeoptimizeObjectsALotThread();
