@@ -24,7 +24,9 @@
 /**
  * @test
  * @bug 7777777
- * @summary (TODO:bugid above) Check if scalar replaced objects (see escape analysis) are visited when iterating the java heap with JVMTI means.
+ * @comment TODO:change bug id
+ * @summary Check by counting instances if scalar replaced objects (see escape analysis) are visited
+ *          when iterating the java heap with JVMTI means.
  * @requires (vm.compMode != "Xcomp" & vm.compiler2.enabled)
  * @library /test/lib
  * @compile IterateHeapWithActiveEscapeAnalysis.java
@@ -72,12 +74,20 @@ public class IterateHeapWithActiveEscapeAnalysis {
 
     public static final int COMPILE_THRESHOLD = 20000;
 
+    /**
+     * Class of objects which are supposed to be scalar replaced in {@link TestCase#dontinline_testMethod()}
+     */
     public static final Class<?> SCALAR_REPLACEMENTS_CLASS = ABox.class;
 
+    
+    /**
+     * The class {@link #SCALAR_REPLACEMENTS_CLASS} will be tagged with this tag.
+     */
     public static final long CLASS_TAG = 2525;
 
     public static native int jvmtiTagClass(Class<?> cls, long tag);
 
+    // Methods to count instances of a given class available in JVMTI
     public static enum InstanceCountMethod {
         IterateOverReachableObjects,
         IterateOverHeap,
@@ -89,6 +99,16 @@ public class IterateHeapWithActiveEscapeAnalysis {
     public static native int registerMethod(InstanceCountMethod m, String name);
     public static native void agentTearDown();
 
+    
+    /**
+     * Count instances of a given class.
+     * @param scalarReplCls Used by the method {@link InstanceCountMethod#IterateOverInstancesOfClass} as class to count instances of.
+     *        Ignored by other counting methods.
+     * @param clsTag Tag of the class to count instances of. Used by all methods except
+     *        {@link InstanceCountMethod#IterateOverInstancesOfClass}
+     * @param method JVMTI counting method to be used.
+     * @return The number of instances or -1 if the call fails.
+     */
     public static native int countInstancesOfClass(Class<?> scalarReplCls, long clsTag, InstanceCountMethod method);
 
     public static void main(String[] args) throws Exception {
@@ -146,6 +166,7 @@ public class IterateHeapWithActiveEscapeAnalysis {
 
         public void warmUp() {
             int callCount = COMPILE_THRESHOLD + 1000;
+            doLoop = true;
             while (callCount-- > 0) {
                 dontinline_testMethod();
             }
@@ -158,7 +179,6 @@ public class IterateHeapWithActiveEscapeAnalysis {
                 checkSum += checkSum % ++cs;
             }
             loopCount = 3;
-            doLoop = true;
             targetIsInLoop = false;
             return checkSum;
         }
@@ -182,6 +202,7 @@ public class IterateHeapWithActiveEscapeAnalysis {
 
         public void runTest() throws Exception {
             loopCount = 1L << 62; // endless loop
+            doLoop = true;
             Thread t1 = new Thread(() -> dontinline_testMethod(), "Target Thread (" + getClass().getName() + ")");
             t1.start();
             try {
@@ -198,7 +219,7 @@ public class IterateHeapWithActiveEscapeAnalysis {
         }
 
         public void dontinline_testMethod() {
-            ABox b = new ABox(4);
+            ABox b = new ABox(4);        // will be scalar replaced
             dontinline_endlessLoop();
             checkSum = b.val;
         }
