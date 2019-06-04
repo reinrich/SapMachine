@@ -221,22 +221,27 @@ public class GetOwnedMonitorInfoWithEATest {
             loopCount = 1L << 62; // endless loop
             Thread t1 = new Thread(() -> dontinline_testMethod(), "Target Thread");
             t1.start();
-            waitUntilTargetThreadHasEnteredEndlessLoop();
-            int expectedMonitorCount = 1;
-            int resultSize = expectedMonitorCount + 3;
-            Object[] ownedMonitors = new Object[resultSize];
-            msg("Get monitor info");
-            int monitorCount = getOwnedMonitorInfo(t1, ownedMonitors);
-            terminateEndlessLoop();
-            t1.join();
-            Asserts.assertGreaterThanOrEqual(monitorCount, 0, "getOwnedMonitorsFor() call failed");
-            msg("Monitor info:");
-            for (int i = 0; i < monitorCount; i++) {
-                System.out.println(i + ": cls=" + (ownedMonitors[i] != null ? ownedMonitors[i].getClass() : null));
+            try {
+                waitUntilTargetThreadHasEnteredEndlessLoop();
+                int expectedMonitorCount = 1;
+                int resultSize = expectedMonitorCount + 3;
+                Object[] ownedMonitors = new Object[resultSize];
+                msg("Get monitor info");
+                int monitorCount = getOwnedMonitorInfo(t1, ownedMonitors);
+                terminateEndlessLoop();
+                t1.join();
+                Asserts.assertGreaterThanOrEqual(monitorCount, 0, "getOwnedMonitorsFor() call failed");
+                msg("Monitor info:");
+                for (int i = 0; i < monitorCount; i++) {
+                    System.out.println(i + ": cls=" + (ownedMonitors[i] != null ? ownedMonitors[i].getClass() : null));
+                }
+                Asserts.assertEQ(monitorCount, expectedMonitorCount, "unexpected monitor count returned by getOwnedMonitorsFor()");
+                Asserts.assertNotNull(ownedMonitors[0]);
+                Asserts.assertSame(ownedMonitors[0].getClass(), LockCls.class);
+            } finally {
+                terminateEndlessLoop();
+                t1.join();
             }
-            Asserts.assertEQ(monitorCount, expectedMonitorCount, "unexpected monitor count returned by getOwnedMonitorsFor()");
-            Asserts.assertNotNull(ownedMonitors[0]);
-            Asserts.assertSame(ownedMonitors[0].getClass(), LockCls.class);
         }
 
         public void dontinline_testMethod() {
@@ -263,25 +268,30 @@ public class GetOwnedMonitorInfoWithEATest {
             loopCount = 1L << 62; // endless loop
             Thread t1 = new Thread(() -> dontinline_testMethod(), "Target Thread");
             t1.start();
-            waitUntilTargetThreadHasEnteredEndlessLoop();
-            int expectedMonitorCount = 2;
-            int resultSize = expectedMonitorCount + 3;
-            Object[] ownedMonitors = new Object[resultSize];
-            msg("Get monitor info");
-            int monitorCount = getOwnedMonitorInfo(t1, ownedMonitors);
-            terminateEndlessLoop();
-            t1.join();
-            Asserts.assertGreaterThanOrEqual(monitorCount, 0, "getOwnedMonitorsFor() call failed");
-            msg("Monitor info:");
-            for (int i = 0; i < monitorCount; i++) {
-                System.out.println(i + ": cls=" + (ownedMonitors[i] != null ? ownedMonitors[i].getClass() : null));
-            }
-            Asserts.assertEQ(monitorCount, expectedMonitorCount, "unexpected monitor count returned by getOwnedMonitorsFor()");
-            Asserts.assertNotNull(ownedMonitors[0]);
-            Asserts.assertSame(ownedMonitors[0].getClass(), LockCls2.class);
+            try {
+                waitUntilTargetThreadHasEnteredEndlessLoop();
+                int expectedMonitorCount = 2;
+                int resultSize = expectedMonitorCount + 3;
+                Object[] ownedMonitors = new Object[resultSize];
+                msg("Get monitor info");
+                int monitorCount = getOwnedMonitorInfo(t1, ownedMonitors);
+                terminateEndlessLoop();
+                t1.join();
+                Asserts.assertGreaterThanOrEqual(monitorCount, 0, "getOwnedMonitorsFor() call failed");
+                msg("Monitor info:");
+                for (int i = 0; i < monitorCount; i++) {
+                    System.out.println(i + ": cls=" + (ownedMonitors[i] != null ? ownedMonitors[i].getClass() : null));
+                }
+                Asserts.assertEQ(monitorCount, expectedMonitorCount, "unexpected monitor count returned by getOwnedMonitorsFor()");
+                Asserts.assertNotNull(ownedMonitors[0]);
+                Asserts.assertSame(ownedMonitors[0].getClass(), LockCls2.class);
 
-            Asserts.assertNotNull(ownedMonitors[1]);
-            Asserts.assertSame(ownedMonitors[1].getClass(), LockCls.class);
+                Asserts.assertNotNull(ownedMonitors[1]);
+                Asserts.assertSame(ownedMonitors[1].getClass(), LockCls.class);
+            } finally {
+                terminateEndlessLoop();
+                t1.join();
+            }
         }
 
         public void dontinline_testMethod() {
