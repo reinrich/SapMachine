@@ -125,7 +125,7 @@ static jobject method_FollowReferences;
 static jobject method_IterateThroughHeap;
 
 JNIEXPORT jint JNICALL
-Java_IterateHeapWithActiveEscapeAnalysis_registerMethod(JNIEnv *env, jclass cls, jobject method, jstring name) {
+Java_IterateHeapWithEscapeAnalysisEnabled_registerMethod(JNIEnv *env, jclass cls, jobject method, jstring name) {
   const char *name_chars = (*env)->GetStringUTFChars(env, name, 0);
   int rc = FAILED;
   if (rc != OK && strcmp(name_chars, "IterateOverReachableObjects") == 0) {
@@ -153,7 +153,7 @@ Java_IterateHeapWithActiveEscapeAnalysis_registerMethod(JNIEnv *env, jclass cls,
 }
 
 JNIEXPORT void JNICALL
-Java_IterateHeapWithActiveEscapeAnalysis_agentTearDown(JNIEnv *env, jclass cls) {
+Java_IterateHeapWithEscapeAnalysisEnabled_agentTearDown(JNIEnv *env, jclass cls) {
   (*env)->DeleteGlobalRef(env, method_IterateOverReachableObjects);
   (*env)->DeleteGlobalRef(env, method_IterateOverHeap);
   (*env)->DeleteGlobalRef(env, method_IterateOverInstancesOfClass);
@@ -162,7 +162,7 @@ Java_IterateHeapWithActiveEscapeAnalysis_agentTearDown(JNIEnv *env, jclass cls) 
 }
 
 JNIEXPORT jint JNICALL
-Java_IterateHeapWithActiveEscapeAnalysis_jvmtiTagClass(JNIEnv *env, jclass cls, jclass clsToTag, jlong tag) {
+Java_IterateHeapWithEscapeAnalysisEnabled_jvmtiTagClass(JNIEnv *env, jclass cls, jclass clsToTag, jlong tag) {
     jvmtiError err;
     err = (*jvmti)->SetTag(jvmti, clsToTag, tag);
     if (err != JVMTI_ERROR_NONE) {
@@ -236,7 +236,7 @@ __jvmtiHeapIterationCallback(jlong class_tag,
 
 
 JNIEXPORT jlong JNICALL
-Java_IterateHeapWithActiveEscapeAnalysis_countInstancesOfClass(JNIEnv *env, jclass cls, jclass scalar_repl_cls, jlong clsTag, jobject method) {
+Java_IterateHeapWithEscapeAnalysisEnabled_countInstancesOfClass(JNIEnv *env, jclass cls, jclass scalar_repl_cls, jlong clsTag, jobject method) {
     jvmtiError err;
     Tag_And_Counter data = {0, clsTag};
     jboolean method_found = JNI_FALSE;

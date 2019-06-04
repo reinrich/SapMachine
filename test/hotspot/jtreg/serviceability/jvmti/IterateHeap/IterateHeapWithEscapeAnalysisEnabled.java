@@ -29,9 +29,9 @@
  *          when iterating the java heap with JVMTI means.
  * @requires (vm.compMode != "Xcomp" & vm.compiler2.enabled)
  * @library /test/lib
- * @compile IterateHeapWithActiveEscapeAnalysis.java
+ * @compile IterateHeapWithEscapeAnalysisEnabled.java
  * @run main/othervm/native
- *                  -agentlib:IterateHeapWithActiveEscapeAnalysis
+ *                  -agentlib:IterateHeapWithEscapeAnalysisEnabled
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
@@ -41,9 +41,9 @@
  *                  -Xbatch
  *                  -XX:CICompilerCount=1
  *                  -XX:+DoEscapeAnalysis -XX:+EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:+UseBiasedLocking
- *                  IterateHeapWithActiveEscapeAnalysis
+ *                  IterateHeapWithEscapeAnalysisEnabled
  * @run main/othervm/native
- *                  -agentlib:IterateHeapWithActiveEscapeAnalysis
+ *                  -agentlib:IterateHeapWithEscapeAnalysisEnabled
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
@@ -53,9 +53,9 @@
  *                  -Xbatch
  *                  -XX:CICompilerCount=1
  *                  -XX:+DoEscapeAnalysis -XX:-EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:+UseBiasedLocking
- *                  IterateHeapWithActiveEscapeAnalysis
+ *                  IterateHeapWithEscapeAnalysisEnabled
  * @run main/othervm/native
- *                  -agentlib:IterateHeapWithActiveEscapeAnalysis
+ *                  -agentlib:IterateHeapWithEscapeAnalysisEnabled
  *                  -XX:+UnlockDiagnosticVMOptions
  *                  -Xms32m -Xmx32m
  *                  -XX:CompileCommand=dontinline,*::dontinline_*
@@ -65,12 +65,12 @@
  *                  -Xbatch
  *                  -XX:CICompilerCount=1
  *                  -XX:-DoEscapeAnalysis -XX:-EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:+UseBiasedLocking
- *                  IterateHeapWithActiveEscapeAnalysis
+ *                  IterateHeapWithEscapeAnalysisEnabled
  */
 
 import jdk.test.lib.Asserts;
 
-public class IterateHeapWithActiveEscapeAnalysis {
+public class IterateHeapWithEscapeAnalysisEnabled {
 
     public static final int COMPILE_THRESHOLD = 20000;
 
@@ -112,7 +112,7 @@ public class IterateHeapWithActiveEscapeAnalysis {
     public static native int countInstancesOfClass(Class<?> scalarReplCls, long clsTag, InstanceCountMethod method);
 
     public static void main(String[] args) throws Exception {
-        new IterateHeapWithActiveEscapeAnalysis().runTest();
+        new IterateHeapWithEscapeAnalysisEnabled().runTest();
     }
 
     public void runTest() throws Exception {
