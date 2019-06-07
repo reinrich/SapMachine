@@ -181,6 +181,7 @@ class EATestsTarget {
         new EAMaterializeLocalVariableUponGetTarget()                                       .run();
         new EAGetWithoutMaterializeTarget()                                                 .run();
         new EAMaterializeLocalAtObjectReturnTarget()                                        .run();
+        new EAMaterializeLocalAtObjectPollReturnReturnTarget()                              .run();
         new EAMaterializeIntArrayTarget()                                                   .run();
         new EAMaterializeLongArrayTarget()                                                  .run();
         new EAMaterializeFloatArrayTarget()                                                 .run();
@@ -285,6 +286,7 @@ public class EATests extends TestScaffold {
         new EAMaterializeLocalVariableUponGet()                                       .run(this);
         new EAGetWithoutMaterialize()                                                 .run(this);
         new EAMaterializeLocalAtObjectReturn()                                        .run(this);
+        new EAMaterializeLocalAtObjectPollReturnReturn()                              .run(this);
         new EAMaterializeIntArray()                                                   .run(this);
         new EAMaterializeLongArray()                                                  .run(this);
         new EAMaterializeFloatArray()                                                 .run(this);
@@ -422,7 +424,7 @@ abstract class EATestCaseBaseDebugger  extends EATestCaseBaseShared {
         List<StackFrame> stack_frames = thread.frames();
         int i = 0;
         for (StackFrame ff : stack_frames) {
-            System.out.println("frame[" + i++ +"]: " + ff.location().method());
+            System.out.println("frame[" + i++ +"]: " + ff.location().method() + " (bci:" + ff.location().codeIndex() + ")");
         }
     }
 
@@ -1081,8 +1083,8 @@ class EAMaterializeLocalVariableUponGetTarget extends EATestCaseBaseTarget {
 
 /////////////////////////////////////////////////////////////////////////////
 
-// Test if an eliminated object can be reallocated with an active call that
-// will return another object
+// Test if an eliminated object can be reallocated in a frame with an active
+// call that will return another object
 class EAMaterializeLocalAtObjectReturn extends EATestCaseBaseDebugger {
     public void runTestCase() throws Exception {
         BreakpointEvent bpe = env.resumeTo(TARGET_TESTCASE_BASE_NAME, "dontinline_brkpt", "()V");
@@ -1102,7 +1104,8 @@ class EAMaterializeLocalAtObjectReturnTarget extends EATestCaseBaseTarget {
 
     public void dontinline_testMethod() {
         XYVal xy = new XYVal(4, 2);
-        Integer io = dontinline_brkpt_return_Integer();
+        Integer io =                 // Read xy here triggers reallocation
+                dontinline_brkpt_return_Integer();
         iResult = xy.x + xy.y + io;
     }
 
@@ -1116,6 +1119,72 @@ class EAMaterializeLocalAtObjectReturnTarget extends EATestCaseBaseTarget {
     @Override
     public int getExpectedIResult() {
         return 4 + 2 + 23;
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+// Test if an eliminated object can be reallocated *just* before a call returns an object.
+// (See CompiledMethod::is_at_poll_return())
+// Details: the callee method has just one safepoint poll at the return. The other safepoint
+// is at the end of an iteration of the endless loop. We can detect if we suspended the target
+// there, because the local xy is out of scope there.
+class EAMaterializeLocalAtObjectPollReturnReturn extends EATestCaseBaseDebugger {
+    public void runTestCase() throws Exception {
+        msg("Resume " + env.targetMainThread);
+        env.targetMainThread.resume();
+        waitUntilTargetHasEnteredEndlessLoop();
+        ObjectReference o = null;
+        do {
+            env.targetMainThread.suspend();
+            printStack(env.targetMainThread);
+            try {
+                o = getLocalRef(env.targetMainThread.frame(0), XYVAL_NAME, "xy");
+            } catch (Exception e) {
+                msg("The local variable xy is out of scope, because we suspended at the wrong bci. Resume and try again!");
+                env.targetMainThread.resume();
+            }
+        } while (o == null);
+        checkPrimitiveField(o, FD.I, "x", 4);
+        checkPrimitiveField(o, FD.I, "y", 2);
+        terminateEndlessLoop();
+    }
+}
+
+class EAMaterializeLocalAtObjectPollReturnReturnTarget extends EATestCaseBaseTarget {
+    @Override
+    public void setUp() {
+        super.setUp();
+        loopCount = 3;
+        doLoop = true;
+    }
+
+    public void warmupDone() {
+        super.warmupDone();
+        msg("enter 'endless' loop by setting loopCount = Long.MAX_VALUE");
+        loopCount = Long.MAX_VALUE; // endless loop
+    }
+
+    public void dontinline_testMethod() {
+        long result = 0;
+        while (doLoop && loopCount-- > 0) {
+            targetIsInLoop = true;
+            XYVal xy = new XYVal(4, 2);
+            Integer io =           // Read xy here triggers reallocation just before the call returns
+                    dontinline_brkpt_return_Integer();
+            result += xy.x + xy.y + io;
+        }  // Here is a second safepoint. We were suspended here, if xy is not in scope.
+        targetIsInLoop = false;
+        lResult = result;
+    }
+
+    public Integer dontinline_brkpt_return_Integer() {
+        return Integer.valueOf(23);
+    }
+
+    @Override
+    public long getExpectedLResult() {
+        return (Long.MAX_VALUE - loopCount) * (4+2+23);
     }
 }
 
