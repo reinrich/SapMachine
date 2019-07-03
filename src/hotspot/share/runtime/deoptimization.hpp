@@ -166,6 +166,7 @@ class Deoptimization : AllStatic {
   static bool deoptimize_objects(JavaThread* thread, GrowableArray<compiledVFrame*>* chunk, bool& realloc_failures, int exec_mode);
 
 JVMCI_ONLY(public:)
+
   // Support for restoring non-escaping objects
   static bool realloc_objects(JavaThread* thread, frame* fr, const RegisterMap* reg_map, GrowableArray<ScopeValue*>* objects, TRAPS);
   static void reassign_type_array_elements(frame* fr, const RegisterMap* reg_map, ObjectValue* sv, typeArrayOop obj, BasicType type);
