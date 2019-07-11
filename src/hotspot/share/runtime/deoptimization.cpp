@@ -2558,7 +2558,7 @@ bool JVMTIEscapeBarrier::objs_are_deoptimized(JavaThread* thread, intptr_t* fr_i
   return result;
 }
 
-// Remember that objects were reallocated for the compiled frame with the given id
+// Remember that objects were reallocated and relocked for the compiled frame with the given id
 void JVMTIEscapeBarrier::set_objs_are_deoptimized(JavaThread* thread, intptr_t* fr_id) {
   // set in first/oldest update
   GrowableArray<jvmtiDeferredLocalVariableSet*>* list = thread->deferred_locals();
