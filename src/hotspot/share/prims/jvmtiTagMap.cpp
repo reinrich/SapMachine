@@ -1482,8 +1482,7 @@ void JvmtiTagMap::iterate_over_heap(jvmtiHeapObjectFilter object_filter,
                                     jvmtiHeapObjectCallback heap_object_callback,
                                     const void* user_data)
 {
-  // Reallocate scalar replaced objects to the heap. Already tagged objects must have been
-  // reallocated already.
+  // EA based optimizations on tagged objects are already reverted.
   JVMTIEscapeBarrier eb(JavaThread::current(),
       object_filter == JVMTI_HEAP_OBJECT_UNTAGGED || object_filter == JVMTI_HEAP_OBJECT_EITHER);
   eb.deoptimize_objects_all_threads();
@@ -1504,8 +1503,7 @@ void JvmtiTagMap::iterate_through_heap(jint heap_filter,
                                        const jvmtiHeapCallbacks* callbacks,
                                        const void* user_data)
 {
-  // Reallocate scalar replaced objects to the heap. Already tagged objects must have been
-  // reallocated already.
+  // EA based optimizations on tagged objects are already reverted.
   JVMTIEscapeBarrier eb(JavaThread::current(), !(heap_filter & JVMTI_HEAP_FILTER_UNTAGGED));
   eb.deoptimize_objects_all_threads();
   MutexLocker ml(Heap_lock);
@@ -3273,7 +3271,6 @@ void JvmtiTagMap::iterate_over_reachable_objects(jvmtiHeapRootCallback heap_root
                                                  jvmtiObjectReferenceCallback object_ref_callback,
                                                  const void* user_data) {
   JavaThread* jt = JavaThread::current();
-  // reallocate scalar replaced objects to the heap
   JVMTIEscapeBarrier eb(jt, true);
   eb.deoptimize_objects_all_threads();
   MutexLocker ml(Heap_lock);
@@ -3305,7 +3302,7 @@ void JvmtiTagMap::follow_references(jint heap_filter,
   oop obj = JNIHandles::resolve(object);
   JavaThread* jt = JavaThread::current();
   Handle initial_object(jt, obj);
-  // Reallocate scalar replaced objects to the heap. Tagged objects can't be scalar replaced.
+  // EA based optimizations that are tagged or reachable from initial_object are already reverted.
   JVMTIEscapeBarrier eb(jt,
       initial_object.is_null() && !(heap_filter & JVMTI_HEAP_FILTER_UNTAGGED));
   eb.deoptimize_objects_all_threads();
