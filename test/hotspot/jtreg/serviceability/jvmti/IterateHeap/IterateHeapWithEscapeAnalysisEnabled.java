@@ -75,7 +75,7 @@ public class IterateHeapWithEscapeAnalysisEnabled {
     public static final int COMPILE_THRESHOLD = 20000;
 
     /**
-     * Class of objects which are supposed to be scalar replaced in {@link TestCase#dontinline_testMethod()}
+     * Class of objects which are supposed to be scalar replaced in {@link TestCaseCountInstances#dontinline_testMethod()}
      */
     public static final Class<?> SCALAR_REPLACEMENTS_CLASS = ABox.class;
 
@@ -112,14 +112,12 @@ public class IterateHeapWithEscapeAnalysisEnabled {
     public static native int countInstancesOfClass(Class<?> scalarReplCls, long clsTag, InstanceCountMethod method);
 
     public static void main(String[] args) throws Exception {
-        new IterateHeapWithEscapeAnalysisEnabled().runTest();
+        new IterateHeapWithEscapeAnalysisEnabled().runTestCases();
     }
 
-    public void runTest() throws Exception {
+    public void runTestCases() throws Exception {
         setUp();
-        for(InstanceCountMethod m : InstanceCountMethod.values()) {
-            new TestCase(m).run();
-        }
+        new TestCaseCountInstances().run();
         agentTearDown();
     }
 
@@ -144,9 +142,11 @@ public class IterateHeapWithEscapeAnalysisEnabled {
         }
     }
 
-    public static class TestCase implements Runnable {
-
-        public InstanceCountMethod method;
+    /**
+     * Count instances of {@link IterateHeapWithEscapeAnalysisEnabled#SCALAR_REPLACEMENTS_CLASS}
+     * using the methods listed in {@link InstanceCountMethod}
+     */
+    public static class TestCaseCountInstances implements Runnable {
 
         public long checkSum;
         public long loopCount;
@@ -155,10 +155,12 @@ public class IterateHeapWithEscapeAnalysisEnabled {
 
         public void run() {
             try {
-                msgHL("Testing " + method.name());
                 warmUp();
-                System.gc(); // get rid of dead instances from previous test cases
-                runTest();
+                for(InstanceCountMethod m : InstanceCountMethod.values()) {
+                    msgHL("Test Instance Count using " + m.name());
+                    System.gc(); // get rid of dead instances from previous test cases
+                    runTest(m);
+                }
             } catch (Exception e) {
                 Asserts.fail("Unexpected Exception", e);
             }
@@ -196,19 +198,15 @@ public class IterateHeapWithEscapeAnalysisEnabled {
             doLoop = false;
         }
 
-       public TestCase(InstanceCountMethod m) {
-            method = m;
-        }
-
-        public void runTest() throws Exception {
+        public void runTest(InstanceCountMethod m) throws Exception {
             loopCount = 1L << 62; // endless loop
             doLoop = true;
             Thread t1 = new Thread(() -> dontinline_testMethod(), "Target Thread (" + getClass().getName() + ")");
             t1.start();
             try {
                 waitUntilTargetThreadHasEnteredEndlessLoop();
-                msg("count instances of " + SCALAR_REPLACEMENTS_CLASS.getName() + " using JVMTI " + method.name());
-                int count = countInstancesOfClass(SCALAR_REPLACEMENTS_CLASS, CLASS_TAG, method);
+                msg("count instances of " + SCALAR_REPLACEMENTS_CLASS.getName() + " using JVMTI " + m.name());
+                int count = countInstancesOfClass(SCALAR_REPLACEMENTS_CLASS, CLASS_TAG, m);
                 msg("Done. Count is " + count);
                 Asserts.assertGreaterThanOrEqual(count, 0, "countInstancesOfClass FAILED");
                 Asserts.assertEQ(count, 1, "unexpected number of instances");
