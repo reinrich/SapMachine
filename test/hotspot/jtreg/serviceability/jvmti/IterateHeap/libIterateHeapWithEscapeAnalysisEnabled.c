@@ -176,6 +176,7 @@ Java_IterateHeapWithEscapeAnalysisEnabled_jvmtiTagClass(JNIEnv *env, jclass cls,
 typedef struct Tag_And_Counter {
     jlong instance_counter;
     jlong class_tag;
+    jlong instance_tag;
 } Tag_And_Counter;
 
 static jvmtiIterationControl JNICALL
@@ -189,8 +190,9 @@ __stackReferenceCallback(jvmtiHeapRootKind root_kind,
                        jint slot,
                        void* d) {
     Tag_And_Counter* data = (Tag_And_Counter*) d;
-    if (class_tag == data->class_tag) {
+    if (class_tag == data->class_tag && *tag_ptr == 0) {
         data->instance_counter++;
+        *tag_ptr = data->instance_tag;
     }
     return JVMTI_ITERATION_CONTINUE;
 }
@@ -198,8 +200,9 @@ __stackReferenceCallback(jvmtiHeapRootKind root_kind,
 static jvmtiIterationControl JNICALL
 __jvmtiHeapObjectCallback(jlong class_tag, jlong size, jlong* tag_ptr, void* d) {
     Tag_And_Counter* data = (Tag_And_Counter*) d;
-    if (class_tag == data->class_tag) {
+    if (class_tag == data->class_tag && *tag_ptr == 0) {
         data->instance_counter++;
+        *tag_ptr = data->instance_tag;
     }
     return JVMTI_ITERATION_CONTINUE;
 }
@@ -215,8 +218,9 @@ __jvmtiHeapReferenceCallback(jvmtiHeapReferenceKind reference_kind,
                              jint length,
                              void* d) {
     Tag_And_Counter* data = (Tag_And_Counter*) d;
-    if (class_tag == data->class_tag) {
+    if (class_tag == data->class_tag && *tag_ptr == 0) {
         data->instance_counter++;
+        *tag_ptr = data->instance_tag;
     }
     return JVMTI_VISIT_OBJECTS;
 }
@@ -228,17 +232,23 @@ __jvmtiHeapIterationCallback(jlong class_tag,
                              jint length,
                              void* d) {
     Tag_And_Counter* data = (Tag_And_Counter*) d;
-    if (class_tag == data->class_tag) {
+    if (class_tag == data->class_tag && *tag_ptr == 0) {
         data->instance_counter++;
+        *tag_ptr = data->instance_tag;
     }
     return JVMTI_VISIT_OBJECTS;
 }
 
 
 JNIEXPORT jlong JNICALL
-Java_IterateHeapWithEscapeAnalysisEnabled_countInstancesOfClass(JNIEnv *env, jclass cls, jclass scalar_repl_cls, jlong clsTag, jobject method) {
+Java_IterateHeapWithEscapeAnalysisEnabled_countAndTagInstancesOfClass(JNIEnv *env,
+                                                                      jclass cls,
+                                                                      jclass tagged_class,
+                                                                      jlong cls_tag,
+                                                                      jlong instance_tag,
+                                                                      jobject method) {
     jvmtiError err;
-    Tag_And_Counter data = {0, clsTag};
+    Tag_And_Counter data = {0, cls_tag, instance_tag};
     jboolean method_found = JNI_FALSE;
 
     jint idx = 0;
@@ -252,7 +262,7 @@ Java_IterateHeapWithEscapeAnalysisEnabled_countInstancesOfClass(JNIEnv *env, jcl
                                                     &data);
         if (err != JVMTI_ERROR_NONE) {
             ShowErrorMessage(jvmti, err,
-                             "countInstancesOfClass: error in JVMTI IterateOverReachableObjects");
+                             "countAndTagInstancesOfClass: error in JVMTI IterateOverReachableObjects");
             return FAILED;
         }
     }
@@ -264,20 +274,20 @@ Java_IterateHeapWithEscapeAnalysisEnabled_countInstancesOfClass(JNIEnv *env, jcl
                                         &data);
         if (err != JVMTI_ERROR_NONE) {
             ShowErrorMessage(jvmti, err,
-                             "countInstancesOfClass: error in JVMTI IterateOverHeap");
+                             "countAndTagInstancesOfClass: error in JVMTI IterateOverHeap");
             return FAILED;
         }
     }
     if ((*env)->IsSameObject(env, method, method_IterateOverInstancesOfClass)) {
         method_found = JNI_TRUE;
         err = (*jvmti)->IterateOverInstancesOfClass(jvmti,
-                                                    scalar_repl_cls,
+                                                    tagged_class,
                                                     JVMTI_HEAP_OBJECT_EITHER,
                                                     __jvmtiHeapObjectCallback,
                                                     &data);
         if (err != JVMTI_ERROR_NONE) {
             ShowErrorMessage(jvmti, err,
-                             "countInstancesOfClass: error in JVMTI IterateOverHeap");
+                             "countAndTagInstancesOfClass: error in JVMTI IterateOverHeap");
             return FAILED;
         }
     }
@@ -293,7 +303,7 @@ Java_IterateHeapWithEscapeAnalysisEnabled_countInstancesOfClass(JNIEnv *env, jcl
                                          &data);
         if (err != JVMTI_ERROR_NONE) {
             ShowErrorMessage(jvmti, err,
-                             "countInstancesOfClass: error in JVMTI FollowReferences");
+                             "countAndTagInstancesOfClass: error in JVMTI FollowReferences");
             return FAILED;
         }
     }
@@ -308,15 +318,57 @@ Java_IterateHeapWithEscapeAnalysisEnabled_countInstancesOfClass(JNIEnv *env, jcl
                                            &data);
         if (err != JVMTI_ERROR_NONE) {
             ShowErrorMessage(jvmti, err,
-                             "countInstancesOfClass: error in JVMTI IterateThroughHeap");
+                             "countAndTagInstancesOfClass: error in JVMTI IterateThroughHeap");
             return FAILED;
         }
     }
 
     if (!method_found) {
-        fprintf(stderr, "countInstancesOfClass: unknown method\n");
+        fprintf(stderr, "countAndTagInstancesOfClass: unknown method\n");
         return FAILED;
     }
 
     return data.instance_counter;
+}
+
+JNIEXPORT jlong JNICALL
+Java_IterateHeapWithEscapeAnalysisEnabled_getObjectsWithTag(JNIEnv *env,
+                                                            jclass cls,
+                                                            jlong tag,
+                                                            jarray res_instances) {
+  jvmtiError  err;
+  const jlong tags[1] = {tag};
+  jint        res_count = -1;
+  jobject*    res_instances_raw;
+  jlong*      res_tags;
+  jint        res_instances_length;
+  jint        idx;
+
+  err = (*jvmti)->GetObjectsWithTags(jvmti,
+                                     1,
+                                     tags,
+                                     &res_count,
+                                     &res_instances_raw,
+                                     &res_tags);
+  if (err != JVMTI_ERROR_NONE) {
+      ShowErrorMessage(jvmti, err,
+                       "getObjectsWithTags: error in JVMTI GetObjectsWithTags");
+      return FAILED;
+  }
+
+  res_instances_length = (*env)->GetArrayLength(env, res_instances);
+  if (res_count != res_instances_length) {
+    fprintf(stderr, "getObjectsWithTags: result array lenght (%d) does not match instance count returned by GetObjectsWithTags (%d) \n",
+            res_instances_length, res_count);
+    return FAILED;
+  }
+
+  for (idx = 0; idx < res_count; idx++) {
+    (*env)->SetObjectArrayElement(env, res_instances, idx, res_instances_raw[idx]);
+  }
+
+  (*jvmti)->Deallocate(jvmti, (unsigned char *)res_instances_raw);
+  (*jvmti)->Deallocate(jvmti, (unsigned char *)res_tags);
+
+  return OK;
 }

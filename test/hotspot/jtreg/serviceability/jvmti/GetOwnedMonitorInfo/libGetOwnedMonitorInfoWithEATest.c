@@ -134,7 +134,7 @@ Java_GetOwnedMonitorInfoWithEATest_getOwnedMonitorInfo(JNIEnv *env, jclass cls, 
     jvmtiThreadInfo threadInfo;
     jint monitorCount;
     jobject* monitors;
-    jint idx = 0;
+    jint idx;
 
     err = (*jvmti)->GetThreadInfo(jvmti, targetThread, &threadInfo);
     if (err != JVMTI_ERROR_NONE) {

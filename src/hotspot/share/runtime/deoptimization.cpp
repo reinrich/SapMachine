@@ -2639,7 +2639,8 @@ bool JVMTIEscapeBarrier::deoptimize_objects_all_threads() {
       while (vf != NULL) {
         if (vf->is_compiled_frame()) {
           compiledVFrame* cvf = compiledVFrame::cast(vf);
-          if (cvf->not_global_escape_in_scope() && !deoptimize_objects(jt, cvf->fr(), cvf->register_map())) {
+          if ((cvf->not_global_escape_in_scope() || cvf->arg_escape()) &&
+              !deoptimize_objects(jt, cvf->fr(), cvf->register_map())) {
             return false; // reallocation failure
           }
         }
