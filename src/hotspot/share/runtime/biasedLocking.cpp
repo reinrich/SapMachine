@@ -669,7 +669,10 @@ BiasedLocking::Condition BiasedLocking::single_revoke_with_handshake(Handle obj,
 void BiasedLocking::walk_stack_and_revoke(oop obj, JavaThread* biased_locker) {
   assert(!SafepointSynchronize::is_at_safepoint() || !ThreadLocalHandshakes,
          "if ThreadLocalHandshakes is enabled this should always be executed outside safepoints");
-  assert(Thread::current() == biased_locker || Thread::current()->is_VM_thread(), "wrong thread");
+  assert(Thread::current() == biased_locker ||
+         Thread::current()->is_VM_thread() ||
+         biased_locker->is_ea_obj_deopt_suspend(),
+         "wrong thread");
 
   markWord mark = obj->mark();
   assert(mark.biased_locker() == biased_locker &&

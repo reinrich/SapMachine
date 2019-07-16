@@ -2856,7 +2856,7 @@ bool JVMTIEscapeBarrier::deoptimize_objects(JavaThread* deoptee, frame fr, const
         }
       }
       if (arg_esc_owners->length() > 0) {
-        BiasedLocking::revoke(arg_esc_owners);
+        BiasedLocking::revoke(arg_esc_owners, deoptee);
       }
     }
 
