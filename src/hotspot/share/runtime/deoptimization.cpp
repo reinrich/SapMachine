@@ -2741,8 +2741,9 @@ void JVMTIEscapeBarrier::sync_and_suspend_all() {
 
     _self_deoptimization_in_progress = true;
 
-    bool deopt_in_progress = false;
+    bool deopt_in_progress;
     do {
+      deopt_in_progress = false;
       for (JavaThreadIteratorWithHandle jtiwh; JavaThread *jt = jtiwh.next(); ) {
         if (jt->is_ea_obj_deopt_suspend()) {
           deopt_in_progress = true;
