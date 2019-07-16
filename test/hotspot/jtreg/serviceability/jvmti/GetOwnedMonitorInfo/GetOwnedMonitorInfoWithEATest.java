@@ -23,8 +23,7 @@
 
 /**
  * @test
- * @bug 7777777
- * @comment TODO:change bug id
+ * @bug 8227745
  * @summary Test JVMTI's GetOwnedMonitorInfo with scalar replaced objects and eliminated locks on stack (optimizations based on escape analysis).
  * @requires (vm.compMode != "Xcomp" & vm.compiler2.enabled)
  * @library /test/lib

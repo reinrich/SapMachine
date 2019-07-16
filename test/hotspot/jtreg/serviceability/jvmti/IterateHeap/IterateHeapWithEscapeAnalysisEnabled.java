@@ -23,8 +23,7 @@
 
 /**
  * @test
- * @bug 7777777
- * @comment TODO:change bug id
+ * @bug 8227745
  * @summary Check if optimizations based on escape analysis are reverted before local objects are found by
  *          JVMTI agents walking the heap or all references.
  * @requires (vm.compMode != "Xcomp" & vm.compiler2.enabled)

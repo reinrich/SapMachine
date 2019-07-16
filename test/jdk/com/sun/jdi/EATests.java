@@ -23,9 +23,8 @@
 
 /**
  * @test
- * @bug 7777777
+ * @bug 8227745
  * @summary Collection of test cases that check if optimizations based on escape analysis are reverted just before non-escaping objects escape through JVMTI.
- * @comment TODO: change bug id. TODO: adapt graal
  * @author Richard Reingruber richard DOT reingruber AT sap DOT com
  *
  * @requires (vm.compMode != "Xcomp" & vm.compiler2.enabled)
