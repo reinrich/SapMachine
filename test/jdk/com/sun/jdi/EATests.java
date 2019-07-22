@@ -1849,7 +1849,7 @@ class EARelockingObjectCurrentlyWaitingOnTarget extends EATestCaseBaseTarget {
     public void dontinline_waitWhenWarmupDone(ForLocking l2) throws Exception {
         while (warmupDone && shouldWait) {
             targetIsInLoop = true;
-            l2.wait(100);
+            l2.wait(100);  // TODO: this is racy; (1) remove timeout (2) let debugger call method that does the notify
         }
         targetIsInLoop = false;
     }
