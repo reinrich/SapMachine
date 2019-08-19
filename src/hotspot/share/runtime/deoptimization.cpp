@@ -2846,7 +2846,7 @@ bool JVMTIEscapeBarrier::deoptimize_objects(JavaThread* deoptee, frame fr, const
         GrowableArray<MonitorInfo*>* monitors = vfs->at(i)->monitors();
         for (int j = 0; j < monitors->length(); j++) {
           MonitorInfo* mon_info = monitors->at(j);
-          oop owner = mon_info->owner();
+          oop owner = mon_info->owner(); // TODO: try to trigger assertion about !_owner_is_scalar_replaced
           if (mon_info->eliminated() && owner != NULL) {
             markOop mark = owner->mark();
             if (mark->has_bias_pattern() && !mark->is_biased_anonymously()) {
