@@ -1318,19 +1318,19 @@ bool Deoptimization::relock_objects(JavaThread* thread, GrowableArray<MonitorInf
           markWord unbiased_prototype = markWord::prototype().set_age(mark.age());
           obj->set_mark(unbiased_prototype);
         } else if (exec_mode == Unpack_none) {
-          if (mark->has_locker() && fr->sp() > (intptr_t*)mark->locker()) {
+          if (mark.has_locker() && fr->sp() > (intptr_t*)mark.locker()) {
             // With exec_mode == Unpack_none obj may be thread local and locked in
             // a callee frame. In this case the bias was revoked before.
             // Make the lock in the callee a recursive lock and restore the displaced header.
-            markOop dmw = mark->displaced_mark_helper();
-            mark->locker()->set_displaced_header(NULL);
+            markWord dmw = mark.displaced_mark_helper();
+            mark.locker()->set_displaced_header(markWord::encode((BasicLock*) NULL));
             obj->set_mark(dmw);
           }
-          if (mark->has_monitor()) {
+          if (mark.has_monitor()) {
             // defer relocking if the deoptee thread is currently waiting for obj
             ObjectMonitor* waiting_monitor = deoptee_thread->current_waiting_monitor();
             if (waiting_monitor != NULL && (oop)waiting_monitor->object() == obj()) {
-              mon_info->lock()->set_displaced_header(markOopDesc::unused_mark());
+              mon_info->lock()->set_displaced_header(markWord::unused_mark());
               deoptee_thread->inc_relock_count_after_wait();
               continue;
             }
@@ -2848,9 +2848,9 @@ bool JVMTIEscapeBarrier::deoptimize_objects(JavaThread* deoptee, frame fr, const
           MonitorInfo* mon_info = monitors->at(j);
           oop owner = mon_info->owner(); // TODO: try to trigger assertion about !_owner_is_scalar_replaced
           if (mon_info->eliminated() && owner != NULL) {
-            markOop mark = owner->mark();
-            if (mark->has_bias_pattern() && !mark->is_biased_anonymously()) {
-              assert(mark->biased_locker() == deoptee, "not escaping object can only be biased to current thread");
+            markWord mark = owner->mark();
+            if (mark.has_bias_pattern() && !mark.is_biased_anonymously()) {
+              assert(mark.biased_locker() == deoptee, "not escaping object can only be biased to current thread");
               arg_esc_owners->push(Handle(ct, owner));
             }
           }
