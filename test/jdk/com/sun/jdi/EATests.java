@@ -200,6 +200,7 @@ class EATestsTarget {
         new EARelockingNestedInflatedTarget()                                               .run();
         new EARelockingNestedInflated_02Target()                                            .run();
         new EARelockingArgEscapeLWLockedInCalleeFrameTarget()                               .run();
+        new EARelockingArgEscapeLWLockedInCalleeFrame_2Target()                               .run();
         new EAGetOwnedMonitorsTarget()                                                      .run();
         new EAEntryCountTarget()                                                            .run();
         new EARelockingObjectCurrentlyWaitingOnTarget()                                     .run();
@@ -305,6 +306,7 @@ public class EATests extends TestScaffold {
         new EARelockingNestedInflated()                                               .run(this);
         new EARelockingNestedInflated_02()                                            .run(this);
         new EARelockingArgEscapeLWLockedInCalleeFrame()                               .run(this);
+        new EARelockingArgEscapeLWLockedInCalleeFrame_2()                               .run(this);
         new EAGetOwnedMonitors()                                                      .run(this);
         new EAEntryCount()                                                            .run(this);
         new EARelockingObjectCurrentlyWaitingOn()                                     .run(this);
@@ -1774,6 +1776,48 @@ class EARelockingArgEscapeLWLockedInCalleeFrameTarget extends EATestCaseBaseTarg
         synchronized (l1) {                   // eliminated
             l1.dontinline_sync_method(this);  // l1 escapes
         }
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Similar to {@link EARelockingArgEscapeLWLockedInCalleeFrame}. In addition
+ * the test method has got a scalar replaced object with eliminated locking.
+ * This pattern matches a regression in the implementation.
+ */
+class EARelockingArgEscapeLWLockedInCalleeFrame_2 extends EATestCaseBaseDebugger {
+
+    public void runTestCase() throws Exception {
+        BreakpointEvent bpe = env.resumeTo(TARGET_TESTCASE_BASE_NAME, "dontinline_brkpt", "()V");
+        printStack(bpe.thread());
+        @SuppressWarnings("unused")
+        ObjectReference o = getLocalRef(bpe.thread().frame(2), XYVAL_NAME, "l1");
+    }
+}
+
+class EARelockingArgEscapeLWLockedInCalleeFrame_2Target extends EATestCaseBaseTarget {
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        testMethodDepth = 2;
+    }
+
+    public void dontinline_testMethod() {
+        XYVal l1 = new XYVal(1, 1);       // ArgEscape
+        XYVal l2 = new XYVal(4, 2);       // NoEscape, scalar replaced
+        synchronized (l1) {                   // eliminated
+            synchronized (l2) {               // eliminated
+                l1.dontinline_sync_method(this);  // l1 escapes
+            }
+        }
+        iResult = l2.x + l2.y;
+    }
+
+    @Override
+    public int getExpectedIResult() {
+        return 6;
     }
 }
 
