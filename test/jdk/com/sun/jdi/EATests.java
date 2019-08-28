@@ -1788,25 +1788,24 @@ class EARelockingObjectCurrentlyWaitingOn extends EATestCaseBaseDebugger {
     public void runTestCase() throws Exception {
         env.targetMainThread.resume();
         boolean inWait = false;
-        waitUntilTargetHasEnteredEndlessLoop();
         do {
+            Thread.sleep(100);
             env.targetMainThread.suspend();
             printStack(env.targetMainThread);
             inWait = env.targetMainThread.frame(0).location().method().name().equals("wait");
             if (!inWait) {
-                msg("resume then suspend until stopped in java.lang.Object.wait(long)");
+                msg("Target not yet in java.lang.Object.wait(long).");
                 env.targetMainThread.resume();
-                Thread.sleep(50);
             } 
         } while(!inWait);
-        StackFrame testMethodFrame = env.targetMainThread.frame(3);
+        StackFrame testMethodFrame = env.targetMainThread.frame(4);
         // Access triggers relocking of all eliminated locks, including nested locks of l1 which references
         // the object on which the target main thread is currently waiting.
         ObjectReference l0 = getLocalRef(testMethodFrame, EARelockingObjectCurrentlyWaitingOnTarget.ForLocking.class.getName(), "l0");
         Asserts.assertEQ(l0.entryCount(), 1, "wrong entry count");
         ObjectReference l1 = getLocalRef(testMethodFrame, EARelockingObjectCurrentlyWaitingOnTarget.ForLocking.class.getName(), "l1");
         Asserts.assertEQ(l1.entryCount(), 0, "wrong entry count");
-        setField(testCase, "shouldWait", env.vm().mirrorOf(false));
+        setField(testCase, "objToNotifyOn", l1);
     }
 }
 
@@ -1815,13 +1814,33 @@ class EARelockingObjectCurrentlyWaitingOnTarget extends EATestCaseBaseTarget {
     public static class ForLocking {
     }
 
-    private boolean shouldWait;
+    public volatile Object objToNotifyOn; // debugger assigns value when notify thread should call objToNotifyOn.notifyAll()
 
     @Override
     public void setUp() {
         super.setUp();
         testMethodDepth = 2;
-        shouldWait = true;
+    }
+
+    @Override
+    public void warmupDone() {
+        super.warmupDone();
+        Thread t = new Thread(() -> doNotify());
+        t.start();
+    }
+
+    public void doNotify() {
+        while (objToNotifyOn == null) {
+            try {
+                msg("objToNotifyOn is still null");
+                Thread.sleep(100);
+            } catch (InterruptedException e) { /* ignored */ }
+        }
+        synchronized (objToNotifyOn) {
+            // will be received by the target main thread waiting in dontinline_waitWhenWarmupDone
+            msg("calling objToNotifyOn.notifyAll()");
+            objToNotifyOn.notifyAll();
+        }
     }
 
     @Override
@@ -1847,11 +1866,9 @@ class EARelockingObjectCurrentlyWaitingOnTarget extends EATestCaseBaseTarget {
     }
 
     public void dontinline_waitWhenWarmupDone(ForLocking l2) throws Exception {
-        while (warmupDone && shouldWait) {
-            targetIsInLoop = true;
-            l2.wait(100);  // TODO: this is racy; (1) remove timeout (2) let debugger call method that does the notify
+        if (warmupDone) {
+            l2.wait();
         }
-        targetIsInLoop = false;
     }
 }
 
