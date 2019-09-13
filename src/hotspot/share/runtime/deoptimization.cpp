@@ -2537,7 +2537,7 @@ void Deoptimization::deoptimize_objects_alot_loop() {
       eb.deoptimize_objects_all_threads();
     }
     // Now sleep after the escape barriers destructor resumed the java threads.
-    os::sleep(ct, DeoptimizeObjectsALotInterval, true);
+    os::sleep(ct, DeoptimizeObjectsALotInterval);
   }
 }
 #endif // !ASSERT
