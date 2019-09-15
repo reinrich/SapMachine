@@ -23,8 +23,9 @@
 
 /**
  * @test
- * @bug 8227745
+ * @bug 8230677
  * @summary Test JVMTI's GetOwnedMonitorInfo with scalar replaced objects and eliminated locks on stack (optimizations based on escape analysis).
+ * @comment Without RFE 8227745 escape analysis needs to be switched off to pass the test. For the implementation of RFE 8227745 it serves as a regression test.
  * @requires (vm.compMode != "Xcomp" & vm.compiler2.enabled)
  * @library /test/lib
  * @compile GetOwnedMonitorInfoWithEATest.java
@@ -211,8 +212,10 @@ public class GetOwnedMonitorInfoWithEATest {
 
     /**
      * Starts target thread T and then queries monitor information for T using JVMTI's GetOwnedMonitorInfo().
-     * The jit compiled method {@link #dontinline_testMethod()} has scalar replaced objects with eliminated (nested) locking in scope when
-     * the monitor information is retrieved.
+     * With escape analysis enabled the jit compiled method {@link #dontinline_testMethod()} has
+     * scalar replaced objects with eliminated (nested) locking in scope when the monitor
+     * information is retrieved. Effectively the objects escape through the JVMTI call. This works
+     * only with RFE 8227745. Without it escape analysis needs to be disabled.
      */
     public static class TestCase_1 extends TestCaseBase {
 

@@ -79,12 +79,8 @@ JNI_OnLoad(JavaVM *jvm, void *reserved) {
 static jint
 Agent_Initialize(JavaVM *jvm, char *options, void *reserved) {
     jint res;
-    jvmtiError err;
-    jvmtiCapabilities caps;
 
     printf("Agent_OnLoad started\n");
-
-    memset(&caps, 0, sizeof(caps));
 
     res = JNI_ENV_PTR(jvm)->GetEnv(JNI_ENV_ARG(jvm, (void **) &jvmti),
                                    JVMTI_VERSION_9);
@@ -93,29 +89,39 @@ Agent_Initialize(JavaVM *jvm, char *options, void *reserved) {
         return JNI_ERR;
     }
 
-    caps.can_tag_objects = 1;
-
-    err = (*jvmti)->AddCapabilities(jvmti, &caps);
-    if (err != JVMTI_ERROR_NONE) {
-        ShowErrorMessage(jvmti, err,
-                         "Agent_OnLoad: error in JVMTI AddCapabilities");
-        return JNI_ERR;
-    }
-
-    err = (*jvmti)->GetCapabilities(jvmti, &caps);
-    if (err != JVMTI_ERROR_NONE) {
-        ShowErrorMessage(jvmti, err,
-                         "Agent_OnLoad: error in JVMTI GetCapabilities");
-        return JNI_ERR;
-    }
-
-    if (!caps.can_tag_objects) {
-        fprintf(stderr, "Warning: didn't get the capability can_tag_objects\n");
-        return JNI_ERR;
-    }
-
     printf("Agent_OnLoad finished\n");
     return JNI_OK;
+}
+
+JNIEXPORT jint JNICALL
+Java_IterateHeapWithEscapeAnalysisEnabled_acquireCanTagObjectsCapability(JNIEnv *env, jclass cls) {
+  jvmtiError err;
+  jvmtiCapabilities caps;
+
+  memset(&caps, 0, sizeof(caps));
+
+  caps.can_tag_objects = 1;
+
+  err = (*jvmti)->AddCapabilities(jvmti, &caps);
+  if (err != JVMTI_ERROR_NONE) {
+      ShowErrorMessage(jvmti, err,
+                       "acquireCanTagObjectsCapability: error in JVMTI AddCapabilities");
+      return JNI_ERR;
+  }
+
+  err = (*jvmti)->GetCapabilities(jvmti, &caps);
+  if (err != JVMTI_ERROR_NONE) {
+      ShowErrorMessage(jvmti, err,
+                       "acquireCanTagObjectsCapability: error in JVMTI GetCapabilities");
+      return JNI_ERR;
+  }
+
+  if (!caps.can_tag_objects) {
+      fprintf(stderr, "Warning: didn't get the capability can_tag_objects\n");
+      return JNI_ERR;
+  }
+
+  return JNI_OK;
 }
 
 static jobject method_IterateOverReachableObjects;

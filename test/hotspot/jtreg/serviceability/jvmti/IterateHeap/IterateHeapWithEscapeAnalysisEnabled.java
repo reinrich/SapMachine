@@ -23,12 +23,80 @@
 
 /**
  * @test
- * @bug 8227745
- * @summary Check if optimizations based on escape analysis are reverted before local objects are found by
- *          JVMTI agents walking the heap or all references.
+ * @bug 8230956
+ * @summary JVMTI agents can obtain references to not escaping objects using JVMTI Heap functions.
+ *          Therefore escape analysis should be disabled when an agent aquires the associated capability can_tag_objects.
  * @requires (vm.compMode != "Xcomp" & vm.compiler2.enabled)
  * @library /test/lib
  * @compile IterateHeapWithEscapeAnalysisEnabled.java
+ *
+ * @comment BLOCK BEGIN EXCLUSIVE TESTCASES {
+ *
+ *          The following test cases are executed in fresh VMs, because they require that the
+ *          capability can_tag_objects is not taken until dontinline_testMethod is jit compiled and
+ *          an activation of the compiled version is on stack of the target thread.
+ *
+ *          Without JDK-8227745 these test cases require that escape analysis is disabled at
+ *          start-up, because can_tag_objects can be taken lazily, potentially after loading an
+ *          agent dynamically by means of the attach API. Disabling escape analysis and invalidating
+ *          compiled methods does not help then, because there may be compiled frames with ea-based
+ *          optimizations on stack. Just like in this collection of test cases.
+ *
+ * @run main/othervm/native
+ *                  -agentlib:IterateHeapWithEscapeAnalysisEnabled
+ *                  -XX:+UnlockDiagnosticVMOptions
+ *                  -Xms32m -Xmx32m
+ *                  -XX:+PrintCompilation -XX:+PrintInlining
+ *                  -XX:-TieredCompilation
+ *                  -Xbatch
+ *                  -XX:CompileCommand=dontinline,*::dontinline_*
+ *                  -XX:+DoEscapeAnalysis
+ *                  IterateHeapWithEscapeAnalysisEnabled IterateOverReachableObjects
+ * @run main/othervm/native
+ *                  -agentlib:IterateHeapWithEscapeAnalysisEnabled
+ *                  -XX:+UnlockDiagnosticVMOptions
+ *                  -Xms32m -Xmx32m
+ *                  -XX:+PrintCompilation -XX:+PrintInlining
+ *                  -XX:-TieredCompilation
+ *                  -Xbatch
+ *                  -XX:CompileCommand=dontinline,*::dontinline_*
+ *                  -XX:+DoEscapeAnalysis
+ *                  IterateHeapWithEscapeAnalysisEnabled IterateOverHeap
+ * @run main/othervm/native
+ *                  -agentlib:IterateHeapWithEscapeAnalysisEnabled
+ *                  -XX:+UnlockDiagnosticVMOptions
+ *                  -Xms32m -Xmx32m
+ *                  -XX:+PrintCompilation -XX:+PrintInlining
+ *                  -XX:-TieredCompilation
+ *                  -Xbatch
+ *                  -XX:CompileCommand=dontinline,*::dontinline_*
+ *                  -XX:+DoEscapeAnalysis
+ *                  IterateHeapWithEscapeAnalysisEnabled IterateOverInstancesOfClass
+ * @run main/othervm/native
+ *                  -agentlib:IterateHeapWithEscapeAnalysisEnabled
+ *                  -XX:+UnlockDiagnosticVMOptions
+ *                  -Xms32m -Xmx32m
+ *                  -XX:+PrintCompilation -XX:+PrintInlining
+ *                  -XX:-TieredCompilation
+ *                  -Xbatch
+ *                  -XX:CompileCommand=dontinline,*::dontinline_*
+ *                  -XX:+DoEscapeAnalysis
+ *                  IterateHeapWithEscapeAnalysisEnabled FollowReferences
+ * @run main/othervm/native
+ *                  -agentlib:IterateHeapWithEscapeAnalysisEnabled
+ *                  -XX:+UnlockDiagnosticVMOptions
+ *                  -Xms32m -Xmx32m
+ *                  -XX:+PrintCompilation -XX:+PrintInlining
+ *                  -XX:-TieredCompilation
+ *                  -Xbatch
+ *                  -XX:CompileCommand=dontinline,*::dontinline_*
+ *                  -XX:+DoEscapeAnalysis
+ *                  IterateHeapWithEscapeAnalysisEnabled IterateThroughHeap
+ *
+ * @comment } BLOCK END EXCLUSIVE TESTCASES
+ *
+ * @comment BLOCK BEGIN NON EXCLUSIVE TESTCASES {
+ *
  * @run main/othervm/native
  *                  -agentlib:IterateHeapWithEscapeAnalysisEnabled
  *                  -XX:+UnlockDiagnosticVMOptions
@@ -65,6 +133,8 @@
  *                  -XX:CICompilerCount=1
  *                  -XX:-DoEscapeAnalysis -XX:-EliminateAllocations -XX:+EliminateLocks -XX:+EliminateNestedLocks -XX:+UseBiasedLocking
  *                  IterateHeapWithEscapeAnalysisEnabled
+ *
+ * @comment } BLOCK END NON EXCLUSIVE TESTCASES
  */
 
 import jdk.test.lib.Asserts;
@@ -84,10 +154,10 @@ public class IterateHeapWithEscapeAnalysisEnabled {
         IterateThroughHeap
     }
 
+    public static native int acquireCanTagObjectsCapability();
     public static native int registerMethod(TaggingAndCountingMethods m, String name);
     public static native void agentTearDown();
 
-    
     /**
      * Count and tag instances of a given class.
      * @param cls Used by the method {@link TaggingAndCountingMethods#IterateOverInstancesOfClass} as class to count and tag instances of.
@@ -109,10 +179,14 @@ public class IterateHeapWithEscapeAnalysisEnabled {
     public static native int getObjectsWithTag(long tag, Object[] result);
 
     public static void main(String[] args) throws Exception {
-        new IterateHeapWithEscapeAnalysisEnabled().runTestCases();
+        try {
+            new IterateHeapWithEscapeAnalysisEnabled().runTestCases(args);
+        } finally {
+            agentTearDown();
+        }
     }
 
-    public void runTestCases() throws Exception {
+    public void runTestCases(String[] args) throws Exception {
         // register various instance tagging and counting methods with agent
         for(TaggingAndCountingMethods m : TaggingAndCountingMethods.values()) {
             msg("register instance count method " + m.name());
@@ -120,24 +194,32 @@ public class IterateHeapWithEscapeAnalysisEnabled {
             Asserts.assertGreaterThanOrEqual(rc, 0, "method " + m.name() + " is unknown to agent");
         }
 
-        new TestCase01(100).run();
-        new TestCase02a(200).run();
-        new TestCase02b(300).run();
-        agentTearDown();
-    }
+        if (args.length > 0) {
+            // EXCLUSIVE TEST CASES
+            // cant_tag_objects is acquired after warmup. Use given tagging/counting method.
+            new TestCase01(true, 100, TaggingAndCountingMethods.valueOf(args[0])).run();
+        } else {
+            // NON-EXCLUSIVE TEST CASES
+            // cant_tag_objects is acquired before test cases are run, but still during live phase.
+            msgHL("Acquire capability can_tag_objects before first test case.");
+            int err = acquireCanTagObjectsCapability();
+            Asserts.assertEQ(0, err, "acquireCanTagObjectsCapability FAILED");
 
-    static class ABox {
-        public int val;
-
-        public ABox(int v) {
-            this.val = v;
+            // run test cases
+            for(TaggingAndCountingMethods m : TaggingAndCountingMethods.values()) {
+                new TestCase01(false, 200, m).run();
+            }
+            new TestCase02a(200).run();
+            new TestCase02b(300).run();
         }
     }
 
     static class ABBox {
         public int aVal;
         public int bVal;
-        public TestCaseBase testCase; 
+        public TestCaseBase testCase;
+
+        public ABBox() { /* empty */ }
 
         public ABBox(TestCaseBase testCase) {
             this.testCase = testCase;
@@ -147,7 +229,7 @@ public class IterateHeapWithEscapeAnalysisEnabled {
          * Increment {@link #aVal} and {@link #bVal} under lock. The method is supposed to
          * be inlined into the test method and locking is supposed to be eliminated. After
          * this object escaped to the JVMTI agent, the code with eliminated locking must
-         * not be used anymore. 
+         * not be used anymore.
          */
         public synchronized void synchronizedSlowInc() {
             aVal++;
@@ -156,7 +238,7 @@ public class IterateHeapWithEscapeAnalysisEnabled {
             testCase.waitingForCheck = false;
             bVal++;
         }
-        
+
         public static void dontinline_waitForCheck(TestCaseBase testCase) {
             if (testCase.warmUpDone) {
                 while(!testCase.checkingNow) {
@@ -181,6 +263,8 @@ public class IterateHeapWithEscapeAnalysisEnabled {
 
     public static abstract class TestCaseBase implements Runnable {
         public final long classTag;
+        public long instanceTag;
+
         public final Class<?> taggedClass;
 
         public long checkSum;
@@ -201,7 +285,8 @@ public class IterateHeapWithEscapeAnalysisEnabled {
         public void setUp() {
             // Tag the class of instances to be scalar replaced
             msg("tagging " + taggedClass.getName() + " with tag " +  classTag);
-            jvmtiTagClass(taggedClass, classTag);
+            int err = jvmtiTagClass(taggedClass, classTag);
+            Asserts.assertEQ(0, err, "jvmtiTagClass FAILED");
         }
 
         // to be overridden by test cases
@@ -244,60 +329,105 @@ public class IterateHeapWithEscapeAnalysisEnabled {
     }
 
     /**
-     * Count scalar replaced instances of a class using the methods listed in {@link TaggingAndCountingMethods}
+     * Use JVMTI heap functions associated with the elements of {@link TaggingAndCountingMethods} to
+     * get a reference to an object allocated in {@link TestCase01#dontinline_testMethod()}. The
+     * allocation can be eliminated / scalar replaced.  The test case can be run in two modes: (1)
+     * the capability can_tag_objects which is required to use the JVMTI heap functions is taken
+     * before the test case (2) the capability is taken after {@link TestCase01#dontinline_testMethod()}
+     * is compiled and the target thread has an activation of it on stack.
      */
     public static class TestCase01 extends TestCaseBase {
 
-        public TestCase01(long classTag) {
-            super(classTag, ABox.class);
+        public volatile int testMethod_result;
+        public boolean acquireCanTagObjectsCapabilityAfterWarmup;
+        public TaggingAndCountingMethods taggingMethod;
+
+        public TestCase01(boolean acquireCanTagObjectsCapabilityAfterWarmup, long classTag, TaggingAndCountingMethods taggingMethod) {
+            super(classTag, ABBox.class);
+            instanceTag = classTag + 1;
+            this.acquireCanTagObjectsCapabilityAfterWarmup = acquireCanTagObjectsCapabilityAfterWarmup;
+            this.taggingMethod = taggingMethod;
+        }
+
+        @Override
+        public void setUp() {
+            if (!acquireCanTagObjectsCapabilityAfterWarmup) {
+                super.setUp();
+            }
+        }
+
+        public void setUpAfterWarmUp() {
+            if (acquireCanTagObjectsCapabilityAfterWarmup) {
+                msg("Acquire capability can_tag_objects " + (warmUpDone ? "after" : "before") + " warmup.");
+                int err = acquireCanTagObjectsCapability();
+                Asserts.assertEQ(0, err, "acquireCanTagObjectsCapability FAILED");
+                super.setUp();
+            }
         }
 
         public void run() {
             try {
-                msgHL(getClass().getName() + ": test if scalar replaced objects are reallocated and found by object/heap walks");
+                msgHL(getClass().getName() + ": test if object that may be scalar replaced is found using " + taggingMethod);
+                msg("The capability can_tag_object is acquired " + (acquireCanTagObjectsCapabilityAfterWarmup ? "AFTER" : "BEFORE")
+                        + " warmup.");
                 setUp();
                 warmUp();
-                for(TaggingAndCountingMethods m : TaggingAndCountingMethods.values()) {
-                    msgHL("Test Instance Count with Scalar Replacements using " + m.name());
-                    System.gc(); // get rid of dead instances from previous test cases
-                    runTest(m);
-                }
+                System.gc(); // get rid of dead instances from previous test cases
+                runTest(taggingMethod);
             } catch (Exception e) {
                 Asserts.fail("Unexpected Exception", e);
-            }
-        }
-
-        public void warmUp() {
-            int callCount = COMPILE_THRESHOLD + 1000;
-            doLoop = true;
-            while (callCount-- > 0) {
-                dontinline_testMethod();
             }
         }
 
         public void runTest(TaggingAndCountingMethods m) throws Exception {
             loopCount = 1L << 62; // endless loop
             doLoop = true;
+            testMethod_result = 0;
             Thread t1 = new Thread(() -> dontinline_testMethod(), "Target Thread (" + getClass().getName() + ")");
-            t1.start();
             try {
-                waitUntilTargetThreadHasEnteredEndlessLoop();
-                msg("count instances of " + taggedClass.getName() + " using JVMTI " + m.name());
-                int count = countAndTagInstancesOfClass(taggedClass, classTag, 0, m);
-                msg("Done. Count is " + count);
-                Asserts.assertGreaterThanOrEqual(count, 0, "countInstancesOfClass FAILED");
-                Asserts.assertEQ(count, 1, "unexpected number of instances");
+                t1.start();
+                try {
+                    waitUntilTargetThreadHasEnteredEndlessLoop();
+                    setUpAfterWarmUp();
+                    msg("count and tag instances of " + taggedClass.getName() + " with tag " + instanceTag + " using JVMTI " + m.name());
+                    int count = countAndTagInstancesOfClass(taggedClass, classTag, instanceTag, m);
+                    msg("Done. Count is " + count);
+                    Asserts.assertGreaterThanOrEqual(count, 0, "countInstancesOfClass FAILED");
+                    Asserts.assertEQ(count, 1, "unexpected number of instances");
+
+                    ABBox[] result = new ABBox[1];
+                    msg("get instances tagged with " + instanceTag + ". The instances escape thereby.");
+                    int err = getObjectsWithTag(instanceTag, result);
+                    msg("Done.");
+                    Asserts.assertEQ(0, err, "getObjectsWithTag FAILED");
+
+                    msg("change the now escaped instance' bVal");
+                    ABBox abBox = result[0];
+                    abBox.bVal = 3;
+                    terminateEndlessLoop();
+
+                    msg("wait until target thread has set testMethod_result");
+                    while (testMethod_result == 0) {
+                        Thread.sleep(50);
+                    }
+                    msg("check if the modification of bVal is reflected in testMethod_result.");
+                    Asserts.assertEQ(7, testMethod_result, " testMethod_result has wrong value");
+                    msg("ok.");
+                } finally {
+                    terminateEndlessLoop();
+                }
             } finally {
-                terminateEndlessLoop();
                 t1.join();
             }
         }
 
         @Override
         public void dontinline_testMethod() {
-            ABox b = new ABox(4);        // will be scalar replaced
-            dontinline_endlessLoop(null);
-            checkSum = b.val;
+            ABBox ab = new ABBox();     // can be scalar replaced
+            ab.aVal = 4;
+            ab.bVal = 2;
+            dontinline_endlessLoop(null);   // JVMTI agent acquires reference to ab and changes bVal
+            testMethod_result = ab.aVal + ab.bVal;
         }
     }
 
