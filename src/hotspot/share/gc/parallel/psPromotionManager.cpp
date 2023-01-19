@@ -297,7 +297,8 @@ void PSPromotionManager::restore_preserved_marks() {
 }
 
 void PSPromotionManager::drain_stacks_depth(bool totally_drain) {
-  totally_drain = totally_drain || _totally_drain;
+  const uint threshold = totally_drain ? 0
+                                       : _target_stack_size;
 
 #ifdef ASSERT
   ParallelScavengeHeap* heap = ParallelScavengeHeap::heap();
@@ -307,24 +308,20 @@ void PSPromotionManager::drain_stacks_depth(bool totally_drain) {
 
   OopStarTaskQueue* const tq = claimed_stack_depth();
   do {
-    StarTask p;
+    StarTask task;
 
     // Drain overflow stack first, so other threads can steal from
     // claimed stack while we work.
-    while (tq->pop_overflow(p)) {
-      process_popped_location_depth(p);
+    while (tq->pop_overflow(task)) {
+      if (!tq->try_push_to_taskqueue(task)) {
+        process_popped_location_depth(task);
+      }
     }
 
-    if (totally_drain) {
-      while (tq->pop_local(p)) {
-        process_popped_location_depth(p);
-      }
-    } else {
-      while (tq->size() > _target_stack_size && tq->pop_local(p)) {
-        process_popped_location_depth(p);
-      }
+    while (tq->pop_local(task, threshold)) {
+      process_popped_location_depth(task);
     }
-  } while ((totally_drain && !tq->taskqueue_empty()) || !tq->overflow_empty());
+  } while (!tq->overflow_empty());
 
   assert(!totally_drain || tq->taskqueue_empty(), "Sanity");
   assert(totally_drain || tq->size() <= _target_stack_size, "Sanity");
