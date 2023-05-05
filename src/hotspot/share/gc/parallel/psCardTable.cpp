@@ -119,6 +119,21 @@ class CheckForPreciseMarks : public BasicOopIterateClosure {
   virtual void do_oop(narrowOop* p) { CheckForPreciseMarks::do_oop_work(p); }
 };
 
+static void traceLargeObjArrayScan(oop o) {
+    if (!o->is_objArray()) {
+        return;
+    }
+
+    objArrayOop a = (objArrayOop) o;
+
+    if (a->length() < (int) TraceLargeArraysInOldToYoungScanThreshold) {
+        return;
+    }
+
+    Symbol* name = a->klass()->name();
+    log_info(gc)("Scanned large object array of type %.*s and size %d\n", name->utf8_length(), name->base(), a->length());
+}
+
 // We get passed the space_top value to prevent us from traversing into
 // the old_gen promotion labs, which cannot be safely parsed.
 
@@ -288,6 +303,9 @@ void PSCardTable::scavenge_contents_parallel(ObjectStartArray* start_array,
             Prefetch::write(p, interval);
             oop m = oop(p);
             assert(oopDesc::is_oop_or_null(m), "Expected an oop or NULL for header field at " PTR_FORMAT, p2i(m));
+            if (TraceLargeArraysInOldToYoungScan) {
+                traceLargeObjArrayScan(m);
+            }
             pm->push_contents(m);
             p += m->size();
           }
@@ -296,6 +314,9 @@ void PSCardTable::scavenge_contents_parallel(ObjectStartArray* start_array,
           while (p < to) {
             oop m = oop(p);
             assert(oopDesc::is_oop_or_null(m), "Expected an oop or NULL for header field at " PTR_FORMAT, p2i(m));
+            if (TraceLargeArraysInOldToYoungScan) {
+                traceLargeObjArrayScan(m);
+            }
             pm->push_contents(m);
             p += m->size();
           }

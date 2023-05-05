@@ -32,6 +32,7 @@
 #include "utilities/stack.hpp"
 
 // Simple TaskQueue stats that are collected by default in debug builds.
+#define TASKQUEUE_STATS 1
 
 #if !defined(TASKQUEUE_STATS) && defined(ASSERT)
 #define TASKQUEUE_STATS 1

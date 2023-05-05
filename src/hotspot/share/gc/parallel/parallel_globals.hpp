@@ -74,6 +74,14 @@
   develop(bool, TraceParallelOldGCDensePrefix, false,                       \
           "Trace dense prefix computation for ParallelOldGC")               \
                                                                             \
+  product(bool, TraceLargeArraysInOldToYoungScan, true,                     \
+          "Trace handling large object arrays whne scannign the old "       \
+          "generation for pointers to the young generation.")               \
+                                                                            \
+  product(uintx, TraceLargeArraysInOldToYoungScanThreshold, 2 * M,          \
+          "The threshold for the length of an array to be included in the " \
+          "trace via -XX:+TraceLargeArraysInOldToYoungScan")                \
+                                                                            \
   develop(uintx, GCWorkerDelayMillis, 0,                                    \
           "Delay in scheduling GC workers (in milliseconds)")               \
                                                                             \
